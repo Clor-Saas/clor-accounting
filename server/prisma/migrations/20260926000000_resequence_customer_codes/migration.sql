@@ -3,16 +3,20 @@
 -- existing customer deterministically inside its organisation so old and new
 -- records follow one sequence. Party relations use Party.id, so changing this
 -- display/business identifier does not break invoices, receipts or ledgers.
-UPDATE Party AS target
-SET code = (
-  SELECT printf('%06d', 199999 + COUNT(*))
-  FROM Party AS ranked
-  WHERE ranked.accountId = target.accountId
-    AND ranked.orgId = target.orgId
-    AND ranked.partyType IN ('CUSTOMER', 'BOTH')
-    AND (
-      ranked.createdAt < target.createdAt
-      OR (ranked.createdAt = target.createdAt AND ranked.id <= target.id)
-    )
+WITH ranked AS (
+  SELECT
+    "id",
+    to_char(
+      199999 + row_number() OVER (
+        PARTITION BY "accountId", "orgId"
+        ORDER BY "createdAt", "id"
+      ),
+      'FM000000'
+    ) AS "nextCode"
+  FROM "Party"
+  WHERE "partyType" IN ('CUSTOMER', 'BOTH')
 )
-WHERE target.partyType IN ('CUSTOMER', 'BOTH');
+UPDATE "Party" AS target
+SET "code" = ranked."nextCode"
+FROM ranked
+WHERE target."id" = ranked."id";
