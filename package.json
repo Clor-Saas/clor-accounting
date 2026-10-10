@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173",
+    "dev:web": "vite --host 127.0.0.1 --port 5173",
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:api\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -12,7 +13,7 @@
     "api": "npm --prefix server run dev",
     "api:build": "npm --prefix server run build",
     "api:start": "npm --prefix server start",
-    "start": "concurrently -n web,api -c cyan,magenta \"npm:dev\" \"npm:api\"",
+    "start": "npm run dev",
     "typecheck": "npm --prefix server run typecheck",
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build && npm run api:build",
     "docker:up": "npm run env:init && docker compose up --build",
@@ -25,6 +26,7 @@
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
+    "country-state-city": "^3.2.1",
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
     "jspdf": "^4.2.1",

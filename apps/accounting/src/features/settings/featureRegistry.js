@@ -154,7 +154,7 @@ const ASSIGNMENT = {
  * that owns them rather than writing a second copy. Adapter, not a store.
  */
 export const TAX_FEATURES = [
-  { key: 'gst', label: 'GST', icon: Percent,       config: 'settingsTax', read: (tc) => (tc?.gstEnabled ?? true) !== false },
+  { key: 'gst', label: 'GST', icon: Percent,       config: 'settingsTax', read: (tc) => tc?.gstEnabled === true },
   { key: 'tds', label: 'TDS', icon: BadgePercent,  config: 'settingsTds', read: (tc) => Boolean(tc?.tds?.enabled) },
   { key: 'tcs', label: 'TCS', icon: Percent,       config: '',            read: (tc) => Boolean(tc?.tcs?.enabled) },
 ];

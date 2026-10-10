@@ -3,15 +3,19 @@ import HeroBand from '@ui/components/ui/HeroBand';
 import { useDismissable } from '@ui/components/ui/useDismissable';
 import {
   AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
   BarChart3,
   Calendar,
+  CheckCircle2,
   ChevronDown,
-  Clock,
   Download,
   FileText,
   LayoutList,
   MoreHorizontal,
+  PackageSearch,
   Plus,
+  ReceiptText,
   Undo2,
   Wallet,
 } from 'lucide-react';
@@ -22,8 +26,6 @@ import { csvSafeValue } from '@ui/utils/csv';
 import { MoneyValue } from '@ui/components/docs';
 import {
   EmptyPanel,
-  OverviewBand,
-  OverviewCard,
   OverviewStatusPill as StatusPill,
   Panel,
   PanelLink,
@@ -45,6 +47,89 @@ const LazyDonutChart = lazy(() =>
 const ChartFallback = ({ height = 260 }) => (
   <div className="ui-skel rounded-xl" style={{ height }} aria-hidden="true" />
 );
+
+const metricTones = {
+  blue: { ink: '--ov-blue', soft: '--ov-blue-soft' },
+  slate: { ink: '--fg-muted', soft: '--info-soft' },
+  green: { ink: '--ov-green', soft: '--ov-green-soft' },
+  amber: { ink: '--ov-amber', soft: '--ov-amber-soft' },
+  red: { ink: '--ov-red', soft: '--ov-red-soft' },
+  violet: { ink: '--ov-violet', soft: '--ov-violet-soft' },
+};
+
+function PurchaseMetricCard({ icon: Icon, label, value, delta, goodWhenUp = true, note = '', tone = 'blue' }) {
+  const palette = metricTones[tone] || metricTones.blue;
+  const hasDelta = delta !== null && delta !== undefined && Number(delta) !== 0;
+  const rising = Number(delta) > 0;
+  const good = goodWhenUp ? rising : !rising;
+  const DeltaIcon = rising ? ArrowUpRight : ArrowDownRight;
+
+  return (
+    <article
+      className="ui-card relative min-w-0 overflow-hidden p-4 transition-transform duration-200 hover:-translate-y-0.5"
+      style={{ boxShadow: '0 8px 22px rgba(15, 23, 42, 0.045)' }}
+    >
+      <span
+        className="absolute inset-x-0 top-0 h-0.5"
+        style={{ backgroundColor: `rgb(var(${palette.ink}))` }}
+        aria-hidden="true"
+      />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.075em] ui-muted">{label}</p>
+          <p className="mt-2 truncate text-xl font-semibold tracking-[-0.025em]" title={String(value)}>{value}</p>
+        </div>
+        <span
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
+          style={{ backgroundColor: `rgb(var(${palette.soft}))`, color: `rgb(var(${palette.ink}))` }}
+          aria-hidden="true"
+        >
+          <Icon size={18} strokeWidth={1.8} />
+        </span>
+      </div>
+      <div className="mt-3 flex min-h-4 items-center gap-1.5 text-[11px]">
+        {hasDelta ? (
+          <>
+            <span
+              className="inline-flex items-center gap-0.5 font-semibold"
+              style={{ color: good ? 'rgb(var(--pos))' : 'rgb(var(--neg))' }}
+            >
+              <DeltaIcon size={13} aria-hidden="true" />
+              {Math.abs(Number(delta)).toFixed(1)}%
+            </span>
+            <span className="truncate ui-subtle">from previous period</span>
+          </>
+        ) : (
+          <span className="truncate ui-subtle">{note || 'No change from previous period'}</span>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function PurchaseEmptyState({ height, title, detail, action, icon: Icon = PackageSearch }) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center rounded-xl border border-dashed px-6 text-center"
+      style={{ minHeight: height, borderColor: 'rgb(var(--line))', backgroundColor: 'rgb(var(--surface-sunken))' }}
+    >
+      <span
+        className="mb-3 grid h-12 w-12 place-items-center rounded-2xl"
+        style={{ backgroundColor: 'rgb(var(--ov-blue-soft))', color: 'rgb(var(--ov-blue))' }}
+        aria-hidden="true"
+      >
+        <Icon size={23} strokeWidth={1.7} />
+      </span>
+      <p className="text-sm font-semibold">{title}</p>
+      {detail ? <p className="mt-1 max-w-sm text-xs leading-5 ui-muted">{detail}</p> : null}
+      {action ? (
+        <button type="button" onClick={action.onClick} className="ui-btn ui-btn-secondary mt-3">
+          <Plus size={15} aria-hidden="true" /> {action.label}
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * The Purchases module's front page.
@@ -314,7 +399,7 @@ export default function PurchaseOverview({ db, currentCompany, onNavigate, onNew
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* The same band Home opens with — see HeroBand. The module names
           itself, and the controls that govern every figure below sit
           where Home keeps its search. */}
@@ -327,7 +412,7 @@ export default function PurchaseOverview({ db, currentCompany, onNavigate, onNew
             <button
               type="button"
               onClick={() => setPeriodOpen((v) => !v)}
-              className="ui-btn ui-btn-secondary"
+              className="ui-btn ui-btn-secondary !rounded-xl"
               aria-haspopup="listbox"
               aria-expanded={periodOpen}
             >
@@ -364,20 +449,20 @@ export default function PurchaseOverview({ db, currentCompany, onNavigate, onNew
           </div>
 
           <span
-            className="ui-btn ui-btn-secondary cursor-default"
+            className="ui-btn ui-btn-secondary cursor-default !rounded-xl"
       title={`Compared against ${prettyDate(period.prev.from)} – ${prettyDate(period.prev.to)}`}
           >
             Compare: Previous Period
           </span>
 
-          <button type="button" onClick={exportCsv} className="ui-btn ui-btn-secondary">
+          <button type="button" onClick={exportCsv} className="ui-btn ui-btn-secondary !rounded-xl">
             <Download size={16} aria-hidden="true" /> Export
           </button>
 
           <button
             type="button"
             onClick={() => (typeof onNewBill === 'function' ? onNewBill() : go('bills'))}
-            className="ui-btn ui-btn-primary"
+            className="ui-btn ui-btn-primary !rounded-xl"
           >
             <Plus size={16} aria-hidden="true" /> New Bill
           </button>
@@ -386,7 +471,7 @@ export default function PurchaseOverview({ db, currentCompany, onNavigate, onNew
             <button
               type="button"
               onClick={() => setMoreOpen((v) => !v)}
-              className="ui-btn ui-btn-secondary !px-2"
+              className="ui-btn ui-btn-secondary !rounded-xl !px-2"
               aria-label="More options"
               aria-haspopup="menu"
               aria-expanded={moreOpen}
@@ -426,58 +511,59 @@ export default function PurchaseOverview({ db, currentCompany, onNavigate, onNew
 
       {/* The six figures. Payables, overdue and returns read as bad-when-rising,
           so their arrows are coloured by meaning rather than direction. */}
-      <OverviewBand cols={6}>
-        <OverviewCard
-          tone="sales"
-          icon={BarChart3}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <PurchaseMetricCard
+          tone="blue"
+          icon={ReceiptText}
           label="Total Purchases"
           value={money(current.purchases)}
           delta={delta(current.purchases, previous.purchases)}
-          deltaGoodWhenUp={false}
+          goodWhenUp={false}
         />
-        <OverviewCard
-          tone="invoices"
+        <PurchaseMetricCard
+          tone="slate"
           icon={FileText}
           label="Bills"
           value={String(current.count)}
           delta={delta(current.count, previous.count)}
         />
-        <OverviewCard
-          tone="received"
-          icon={Wallet}
+        <PurchaseMetricCard
+          tone="green"
+          icon={CheckCircle2}
           label="Amount Paid"
           value={money(current.paid)}
           delta={delta(current.paid, previous.paid)}
         />
-        <OverviewCard
-          tone="due"
-          icon={Clock}
+        <PurchaseMetricCard
+          tone="amber"
+          icon={Wallet}
           label="Payables"
           value={money(current.payable)}
           delta={delta(current.payable, previous.payable)}
-          deltaGoodWhenUp={false}
+          goodWhenUp={false}
         />
-        <OverviewCard
-          tone="overdue"
+        <PurchaseMetricCard
+          tone="red"
           icon={AlertTriangle}
           label="Overdue"
           value={money(current.overdue)}
           delta={delta(current.overdue, previous.overdue)}
-          deltaGoodWhenUp={false}
+          goodWhenUp={false}
         />
-        <OverviewCard
-          tone="credit"
+        <PurchaseMetricCard
+          tone="violet"
           icon={Undo2}
           label="Purchase Returns"
           value={money(current.returned)}
           delta={delta(current.returned, previous.returned)}
           note={current.returnedCount ? `${current.returnedCount} debit note(s)` : 'No returns'}
         />
-      </OverviewBand>
+      </div>
 
       <div className="grid gap-4 items-stretch xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <Panel
           title="Purchase Performance"
+          className="overflow-hidden"
           control={
             <Segmented
               ariaLabel="Grain"
@@ -516,12 +602,13 @@ export default function PurchaseOverview({ db, currentCompany, onNavigate, onNew
               </div>
             </>
           ) : (
-            <EmptyPanel height={300} {...emptyReason} />
+            <PurchaseEmptyState height={286} icon={BarChart3} {...emptyReason} />
           )}
         </Panel>
 
         <Panel
           title="Purchase Breakdowns"
+          className="overflow-hidden"
           control={
             <Segmented
               ariaLabel="Breakdown"
@@ -567,7 +654,7 @@ export default function PurchaseOverview({ db, currentCompany, onNavigate, onNew
               </ul>
             </div>
           ) : (
-            <EmptyPanel height={230} {...emptyReason} />
+            <PurchaseEmptyState height={286} icon={PackageSearch} {...emptyReason} />
           )}
         </Panel>
       </div>

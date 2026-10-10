@@ -7,17 +7,13 @@ import {
   Coins,
   FileStack,
   FileText,
-  Landmark,
-  Layers,
   NotebookPen,
   Package,
   Plus,
-  Receipt,
   RefreshCw,
   Settings,
   Shield,
   ShoppingCart,
-  SlidersHorizontal,
   Tags,
   HardDriveDownload,
   Repeat,
@@ -52,18 +48,6 @@ export const SETTINGS_CATEGORIES = [
     description: 'Company information, locations and financial periods.',
   },
   {
-    id: 'business',
-    title: 'Business Operations',
-    icon: SlidersHorizontal,
-    description: 'How the day-to-day documents and workflows behave.',
-  },
-  {
-    id: 'finance',
-    title: 'Finance & Accounting',
-    icon: Landmark,
-    description: 'Accounting rules, payments and the money controls.',
-  },
-  {
     id: 'tax',
     title: 'Tax & Compliance',
     icon: BadgePercent,
@@ -94,27 +78,22 @@ export const SETTINGS_CATEGORIES = [
 export const SETTINGS_ITEMS = [
   // Organisation
   { key: 'settingsCompany', title: 'Company Profile', category: 'organisation', icon: Building2, perm: 'SETTINGS::Company Profile::VIEW', description: 'Name, GSTIN, address and the state your supplies are made from.', keywords: ['gstin', 'address', 'pan', 'logo', 'state', 'legal name'] },
-  { key: 'settingsBranches', title: 'Branches', category: 'organisation', icon: Building2, perm: 'MASTERS::Company/Branch setup::VIEW', feature: 'branches', description: 'The places you trade from, and the number series each one uses.', keywords: ['location', 'office', 'place of business'] },
-  { key: 'settingsWarehouses', title: 'Warehouses', category: 'organisation', icon: Package, perm: 'MASTERS::Company/Branch setup::VIEW', feature: 'warehouses', description: 'Where stock is held, and which branch each store belongs to.', keywords: ['godown', 'store', 'stock location'] },
+  { key: 'settingsBranches', title: 'Branches', category: 'organisation', icon: Building2, perm: 'MASTERS::Company/Branch setup::VIEW', description: 'The places you trade from, and the number series each one uses.', keywords: ['location', 'office', 'place of business'] },
+  { key: 'settingsWarehouses', title: 'Warehouses', category: 'organisation', icon: Package, perm: 'MASTERS::Company/Branch setup::VIEW', description: 'Where stock is held, and which branch each store belongs to.', keywords: ['godown', 'store', 'stock location'] },
   { key: 'yearEndClose', title: 'Financial Year', category: 'organisation', icon: Settings, perm: 'ACCOUNTING::Ledger::VIEW', description: 'The year the books run on, and closing a period against further entries.', keywords: ['fy', 'year end', 'close', 'lock', 'period'] },
   { key: 'settingsCurrencies', title: 'Currency', category: 'organisation', icon: Coins, perm: 'ACCOUNTING::Ledger::VIEW', feature: 'multiCurrency', description: 'The currencies you bill in and the rates they convert at.', keywords: ['forex', 'exchange rate', 'multi currency'] },
 
-  // Business operations
-  { key: 'settingsModules', title: 'Modules', category: 'business', icon: Boxes, perm: 'SETTINGS::Company Profile::VIEW', group: 'What is switched on', description: 'Which parts of the product this company uses.', keywords: ['features', 'turn on', 'enable', 'switch off'] },
-  { key: 'settingsInvoiceFields', title: 'Invoice Settings', category: 'business', icon: FileText, perm: 'SETTINGS::Company Profile::VIEW', group: 'Documents', description: 'Which fields an invoice asks for, and what prints on it.', keywords: ['invoice fields', 'numbering', 'declaration', 'e-invoice'] },
-  { key: 'settingsCustomFields', title: 'Custom Fields', category: 'business', icon: Plus, perm: 'SETTINGS::Company Profile::VIEW', group: 'Documents', description: 'Your own fields on a document, and where they appear.', keywords: ['extra fields', 'reference', 'udf'] },
-  { key: 'discountRules', title: 'Discount Rules', category: 'business', icon: Tags, perm: 'SALES::Invoices::VIEW', feature: 'discountRules', group: 'Documents', description: 'Standing discounts and who they apply to.', keywords: ['discount', 'scheme', 'offer'] },
-  { key: 'recurringInvoices', standalone: true, title: 'Recurring Invoices', category: 'business', icon: RefreshCw, perm: 'SALES::Invoices::VIEW', feature: 'recurringInvoices', group: 'Automation', description: 'Schedules that raise their own invoices — rent, AMC, retainers.', keywords: ['schedule', 'repeat', 'subscription', 'amc'] },
-
-  // Finance & accounting
-  { key: 'settingsAccount', title: 'Account Overview', category: 'finance', icon: Building2, perm: 'SETTINGS::Company Profile::VIEW', group: 'Your account', description: 'The plan this account is on and what it includes.', keywords: ['plan', 'subscription', 'entitlement'] },
-  { key: 'settingsPosAccounts', title: 'POS Payment Accounts', category: 'finance', icon: Receipt, perm: 'SETTINGS::Company Profile::VIEW', group: 'Point of sale', description: 'Where the counter posts cash, UPI and card takings.', keywords: ['pos', 'tender', 'cash', 'upi', 'card', 'till', 'counter'] },
-  { key: 'settingsBilling', title: 'Billing', category: 'finance', icon: Receipt, perm: 'SETTINGS::Company Profile::VIEW', group: 'Your account', description: 'What you are charged for Clor, and the invoices for it.', keywords: ['payment method', 'invoice', 'card', 'subscription'] },
+  // Document and module controls live with the other platform settings.
+  { key: 'settingsModules', title: 'Modules', category: 'platform', icon: Boxes, perm: 'SETTINGS::Company Profile::VIEW', group: 'System', description: 'Which parts of the product this company uses.', keywords: ['features', 'turn on', 'enable', 'switch off'] },
+  { key: 'settingsInvoiceFields', title: 'Invoice Settings', category: 'platform', icon: FileText, perm: 'SETTINGS::Company Profile::VIEW', group: 'Documents', description: 'Which fields an invoice asks for, and what prints on it.', keywords: ['invoice fields', 'numbering', 'declaration', 'e-invoice'] },
+  { key: 'settingsCustomFields', title: 'Custom Fields', category: 'platform', icon: Plus, perm: 'SETTINGS::Company Profile::VIEW', group: 'Documents', description: 'Your own fields on a document, and where they appear.', keywords: ['extra fields', 'reference', 'udf'] },
+  { key: 'discountRules', title: 'Discount Rules', category: 'platform', icon: Tags, perm: 'SALES::Invoices::VIEW', feature: 'discountRules', group: 'Documents', description: 'Standing discounts and who they apply to.', keywords: ['discount', 'scheme', 'offer'] },
+  { key: 'recurringInvoices', standalone: true, title: 'Recurring Invoices', category: 'platform', icon: RefreshCw, perm: 'SALES::Invoices::VIEW', feature: 'recurringInvoices', group: 'Automation', description: 'Schedules that raise their own invoices — rent, AMC, retainers.', keywords: ['schedule', 'repeat', 'subscription', 'amc'] },
 
   // Tax & compliance
   { key: 'settingsTax', title: 'GST', category: 'tax', icon: BadgePercent, perm: 'SETTINGS::Tax Settings::VIEW', description: 'Registration type, filing frequency and what the returns read.', keywords: ['gstin', 'composition', 'gstr', 'filing', 'reverse charge'] },
   { key: 'settingsTds', title: 'TDS', category: 'tax', icon: BadgePercent, perm: 'SETTINGS::Tax Settings::VIEW', description: 'Deductor profile, natures and rules, ledger mapping and party defaults.', keywords: ['tds', 'tan', 'deduction', 'challan', '194', 'deductor', 'nature'] },
-  { key: 'gstRates', title: 'Tax Rates', category: 'tax', icon: BadgePercent, perm: 'MASTERS::GST Rates::VIEW', description: 'The rates items can carry, and which is the default.', keywords: ['gst rate', 'hsn', 'cess', 'slab'] },
+  { key: 'gstRates', standalone: true, title: 'Tax Rates', category: 'tax', icon: BadgePercent, perm: 'MASTERS::GST Rates::VIEW', description: 'The rates items can carry, and which is the default.', keywords: ['gst rate', 'hsn', 'cess', 'slab'] },
 
   // Users & security
   { key: 'settingsUsers', title: 'Users', category: 'security', icon: Users, perm: 'SETTINGS::Users::VIEW', group: 'Access', description: 'Who can sign in, and which branches they work in.', keywords: ['people', 'staff', 'invite', 'deactivate'] },
@@ -176,6 +155,20 @@ export const isSettingsKey = (key) => FRAMED_KEYS.has(String(key || ''));
 export const isSettingsRoute = (key) => {
   const want = String(key || '');
   return isSettingsKey(want) || SETTINGS_KEYS.has(want);
+};
+
+/**
+ * Resolve the destination of a Back control owned by a Settings screen.
+ *
+ * Settings can be opened as an errand from a document list, in which case the
+ * list is the useful return destination. Reports and other settings screens
+ * are not document origins; returning to either made Back appear to jump to a
+ * different module. Those routes return to the Settings menu instead.
+ */
+export const settingsBackTarget = (previous, fallback = 'settings') => {
+  const target = String(previous || '').trim();
+  if (!target || target === 'reports' || isSettingsRoute(target)) return fallback;
+  return target;
 };
 
 export const settingFor = (key) => SETTINGS_ITEMS.find((i) => i.key === String(key || '')) || null;

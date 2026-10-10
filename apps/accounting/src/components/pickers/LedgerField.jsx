@@ -47,6 +47,7 @@ export const LedgerField = ({
   ariaLabel = 'Ledger',
   disabled = false,
   canCreate = true,
+  creationGroupCategory = '',
   /* The masters' own modal host, so a group can be created from inside the
      ledger form the way it can on the Chart of Accounts screen. */
   openModal = null,
@@ -286,6 +287,16 @@ export const LedgerField = ({
             /* What was typed is the name. Retyping it into the form the search
                just failed to match is the whole point of this route. */
             initialName={typed}
+            includeGroupIds={
+              creationGroupCategory
+                ? safeArray(db?.accountGroups)
+                    .filter((group) =>
+                      Number(group?.companyId) === Number(currentCompany?.id) &&
+                      String(group?.groupCategory || '').trim() === String(creationGroupCategory).trim()
+                    )
+                    .map((group) => group.id)
+                : null
+            }
             onCreated={(account) => {
               if (account?.id) {
                 recents.remember(account.id);

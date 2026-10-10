@@ -5,7 +5,7 @@
  * win here is instant repeat loads of the app shell's JS/CSS, offline
  * tolerance for assets already seen, and installability.
  */
-const CACHE = 'neev-static-v1';
+const CACHE = 'clor-static-v2';
 
 /**
  * How many built files this cache may hold.
@@ -58,7 +58,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   if (url.pathname.startsWith('/api/')) return; // books are never cached
-  const isStatic = url.pathname.startsWith('/assets/') || /\.(js|css|svg|woff2?)$/.test(url.pathname);
+  const isStatic = url.pathname.startsWith('/assets/') || /\.(js|css|svg|png|woff2?)$/.test(url.pathname);
   if (!isStatic) return;
 
   e.respondWith(

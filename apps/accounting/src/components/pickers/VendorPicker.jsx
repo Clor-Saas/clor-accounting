@@ -24,6 +24,10 @@ import { nextVendorCode } from '@ui/utils/masterCodes';
 
 export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seedData = null, onCreated, onClose, onDuplicate = null }) => {
   const isEdit = Boolean(initialData);
+  const branchOptions = (Array.isArray(db?.branches) ? db.branches : [])
+    .filter((branch) => Number(branch?.companyId ?? currentCompany.id) === Number(currentCompany.id) && branch?.isActive !== false)
+    .map((branch) => ({ value: String(branch.id), label: String(branch.name || branch.branchName || branch.code || branch.branchCode || `Branch ${branch.id}`) }));
+  const multiBranchEnabled = branchOptions.length > 1;
   const INDIA_COUNTRY = 'India';
   const INDIA_STATES = Object.entries(GST_STATE_BY_CODE)
     .map(([code, name]) => ({ code, name }))
@@ -79,6 +83,7 @@ export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seed
          */
         openingBalance: Number(initialData.openingBalance ?? 0),
         openingBalanceType: String(initialData.openingBalanceType || 'Cr'),
+        openingBalanceBranchId: String(initialData.openingBalanceBranchId || ''),
         creditLimit:
           initialData.creditLimit === undefined || initialData.creditLimit === null ? '' : String(initialData.creditLimit),
         priceListId: String(initialData.priceListId || ''),
@@ -142,6 +147,7 @@ export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seed
         code: '',
         openingBalance: 0,
         openingBalanceType: String(seedData.openingBalanceType || 'Cr'),
+        openingBalanceBranchId: '',
         creditLimit:
           seedData.creditLimit === undefined || seedData.creditLimit === null ? '' : String(seedData.creditLimit),
         contacts: Array.isArray(seedData.contacts) && seedData.contacts.length
@@ -158,6 +164,7 @@ export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seed
       groupId: sundryCreditorsGroup?.id ? String(sundryCreditorsGroup.id) : '',
       openingBalance: isEdit ? Number(initialData?.openingBalance ?? 0) : 0,
       openingBalanceType: isEdit ? (initialData?.openingBalanceType || 'Cr') : 'Cr',
+      openingBalanceBranchId: '',
       currency: 'INR',
       creditLimit: '',
       priceListId: '',
@@ -411,7 +418,7 @@ export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seed
   const resetForm = () =>
     setFormData((p) => ({
       ...p,
-      displayName: '', gstin: '', pan: '', code: '', openingBalance: 0,
+      displayName: '', gstin: '', pan: '', code: '', openingBalance: 0, openingBalanceBranchId: '',
       msmeRegistered: false, msmeNumber: '', statutoryOther: '', priceListId: '', tdsSection: '',
       contacts: [{ name: '', position: '', email: '', mobile: '' }],
       shipToAddresses: [],
@@ -466,6 +473,7 @@ export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seed
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
 
     /* Which button was pressed: "Save and add another" keeps the form open. */
     const saveAndNew = saveAndNewRef.current;
@@ -491,6 +499,10 @@ export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seed
     if (complaint) {
       if (complaint.tab) setTab(complaint.tab);
       notify.error(complaint.message);
+      return;
+    }
+    if (multiBranchEnabled && Number(formData.openingBalance || 0) !== 0 && !String(formData.openingBalanceBranchId || '').trim()) {
+      notify.error('Select the branch that carries this opening balance.');
       return;
     }
 
@@ -635,6 +647,9 @@ export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seed
             type: String(typeRow?.accountClass || existingLedger.type || 'Liability'),
             subType: String(typeRow?.name || existingLedger.subType || ''),
             main: String(typeRow?.main || existingLedger.main || 'Balance Sheet'),
+            openingBalance: Math.round((Number(formData.openingBalance) || 0) * 100) / 100,
+            openingBalanceType: formData.openingBalanceType || 'Cr',
+            openingBalanceBranchId: String(formData.openingBalanceBranchId || ''),
             updatedAt: new Date().toISOString(),
           }
         : {
@@ -648,6 +663,9 @@ export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seed
             subType: String(typeRow?.name || ''),
             main: String(typeRow?.main || 'Balance Sheet'),
             balance: 0,
+            openingBalance: Math.round((Number(formData.openingBalance) || 0) * 100) / 100,
+            openingBalanceType: formData.openingBalanceType || 'Cr',
+            openingBalanceBranchId: String(formData.openingBalanceBranchId || ''),
             createdAt: new Date().toISOString(),
           };
 
@@ -707,6 +725,7 @@ export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seed
       openingBalance: Math.round((Number(formData.openingBalance) || 0) * 100) / 100,
       /* Cr, not Dr: a vendor balance is money the business owes. */
       openingBalanceType: formData.openingBalanceType || 'Cr',
+      openingBalanceBranchId: String(formData.openingBalanceBranchId || ''),
       createdAt: new Date().toISOString(),
     };
 
@@ -779,6 +798,8 @@ export const VendorForm = ({ db, setDb, currentCompany, initialData = null, seed
           codesEnabled={true}
           automaticCode={isEdit ? String(formData.code || '') : nextVendorCode(db?.vendors)}
           priceListOptions={priceListOptions}
+          branchOptions={branchOptions}
+          multiBranchEnabled={multiBranchEnabled}
           onDuplicate={isEdit && onDuplicate ? () => onDuplicate(formData) : null}
           gstinFetching={gstFetching}
           fetchFromGstin={fetchFromGstin}

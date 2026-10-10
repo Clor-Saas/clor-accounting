@@ -58,6 +58,11 @@ const mapCommon = (d, companyId, idKey) => ({
      nothing paid, however much had been received against it. */
   paidAmount: num(d.paidAmount ?? d.settledAmount),
   items: Array.isArray(d.items) ? d.items : [],
+  partyId: d.partyId || '',
+  description: d.description || '',
+  tdsAmount: num(d.tdsAmount),
+  tdsLedgerId: d.tdsLedgerId || '',
+  tdsLedgerName: d.tdsLedgerName || '',
   placeOfSupplyState: d.placeOfSupplyState || '',
   taxType: d.taxType || '',
   createdAt: d.createdAt,

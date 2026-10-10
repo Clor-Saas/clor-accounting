@@ -89,6 +89,7 @@ model Branch {
   phone               String?
   email               String?
   contactPerson       String?
+  isActive            Boolean @default(true)
 
   parentBranchId          String?
   shareHeadOfficeSettings Boolean @default(false)
@@ -122,6 +123,8 @@ model Warehouse {
   orgId     String
   branchId  String
 
+  code      String
+
   name                String
   addressLine1        String?
   addressLine2        String?
@@ -133,6 +136,7 @@ model Warehouse {
   contactPerson       String?
   phone               String?
   email               String?
+  isActive            Boolean @default(true)
 
   createdByUserId String
   createdAt       DateTime @default(now())
@@ -148,6 +152,7 @@ model Warehouse {
   transfersIn  InterBranchTransfer[] @relation("WarehouseIn")
 
   @@unique([orgId, branchId, name])
+  @@unique([orgId, code])
   @@index([accountId, orgId, branchId])
 }
 

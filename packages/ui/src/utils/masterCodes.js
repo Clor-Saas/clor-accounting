@@ -13,3 +13,4 @@ export const nextNumericCode = (rows, start, end) => {
 
 export const nextCustomerCode = (rows) => nextNumericCode(rows, 200000, 599999);
 export const nextVendorCode = (rows) => nextNumericCode(rows, 600000, 999999);
+export const isValidCustomerCode = (value) => /^[2-5]\d{5}$/.test(String(value || '').trim());

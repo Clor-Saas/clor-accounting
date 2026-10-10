@@ -64,6 +64,7 @@ const PAGES = [
     heading: /Quotations/i,
     primary: /New Quotation/i,
     search: /Search quotations/i,
+    status: /Quotation status/i,
     render: () => <EstimatesList db={db} setDb={noop} openModal={noop} currentCompany={COMPANY} />,
   },
   {
@@ -71,6 +72,7 @@ const PAGES = [
     heading: /Sales Orders/i,
     primary: /New Sales Order/i,
     search: /Search sales orders/i,
+    status: /Sales order status/i,
     render: () => <SalesOrders db={db} setDb={noop} currentCompany={COMPANY} />,
   },
   {
@@ -78,6 +80,7 @@ const PAGES = [
     heading: /Delivery Challans/i,
     primary: /New Challan/i,
     search: /Search challans/i,
+    status: /Challan status/i,
     render: () => <DeliveryChallans db={db} setDb={noop} currentCompany={COMPANY} />,
   },
   {
@@ -85,6 +88,7 @@ const PAGES = [
     heading: /Sales Returns/i,
     primary: /New Credit Note/i,
     search: /Search credit notes/i,
+    status: /Credit note status/i,
     render: () => <CreditNotesList db={db} setDb={noop} openModal={noop} currentCompany={COMPANY} />,
   },
   {
@@ -92,6 +96,7 @@ const PAGES = [
     heading: /Recurring Invoices/i,
     primary: /New Schedule/i,
     search: /Search schedules/i,
+    status: /Schedule status/i,
     render: () => <RecurringInvoices db={db} setDb={noop} currentCompany={COMPANY} />,
   },
 ];
@@ -115,16 +120,13 @@ describe.each(PAGES)('$name, laid out like Sales Invoices', (page) => {
     expect(summary.children).toHaveLength(5);
   });
 
-  it('offers status as tabs with counts, not a dropdown', () => {
+  it('puts a compact status dropdown with counts before search', () => {
     render(page.render());
-    const tablist = screen.getByRole('tablist');
-    const tabs = within(tablist).getAllByRole('tab');
-    expect(tabs.length).toBeGreaterThanOrEqual(3);
-    // "All" is always first and always selected on arrival.
-    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
-    // Every tab carries its count; a tab that only appears when it is non-zero
-    // is one people stop trusting.
-    for (const tab of tabs) expect(tab.textContent).toMatch(/\d/);
+    const status = screen.getByRole('combobox', { name: page.status });
+    const search = screen.getByLabelText(page.search);
+    expect(status.querySelectorAll('option').length).toBeGreaterThanOrEqual(3);
+    for (const option of status.querySelectorAll('option')) expect(option.textContent).toMatch(/\d/);
+    expect(status.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('keeps page-level actions behind More', () => {
@@ -175,7 +177,7 @@ describe('an empty list is centred on what you can see', () => {
   });
 });
 
-describe('the narrowings ride the status row', () => {
+describe('the recurring schedule narrowings remain compact', () => {
   /*
    * They were a band across the page — a strip of controls in a card of their
    * own above the table, which is the one piece of furniture the shared shell
@@ -192,19 +194,13 @@ describe('the narrowings ride the status row', () => {
     expect(screen.getByLabelText('Next invoice date to')).toBeTruthy();
   });
 
-  it('puts them on the same line as the tabs, at its far end', () => {
+  it('keeps them together in one compact row above the table', () => {
     render(
       <RecurringInvoices db={db} setDb={noop} currentCompany={COMPANY} branches={[]} warehouses={[]} />
     );
-    const tabs = screen.getByRole('tablist', { name: 'Schedule status' });
-    const row = tabs.parentElement;
-
-    /* The same line, not a band of its own above or below it. */
+    const row = screen.getByRole('combobox', { name: 'Customer' }).parentElement;
     expect(row.contains(screen.getByRole('combobox', { name: 'Customer' }))).toBe(true);
-    expect(row.className).toContain('justify-between');
-    expect(
-      screen.getByRole('combobox', { name: 'Customer' }).closest('div[class*="ms-auto"]')
-    ).toBeTruthy();
+    expect(row.className).toContain('flex');
   });
 
   it('still narrows the list', () => {

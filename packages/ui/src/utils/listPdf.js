@@ -26,7 +26,7 @@ const cellValue = (col, row) => {
  * `subtitle` carries what is currently filtering the view. Printing it is the
  * difference between "our invoices" and "our invoices for August, unpaid".
  */
-export async function exportListPdf({ title, subtitle = '', fileName, columns, rows, footNote = '' }) {
+export async function exportListPdf({ title, subtitle = '', fileName, columns, rows, footNote = '', metaLines = [], footerRows = [], reportStyle = 'default' }) {
   if (!Array.isArray(rows) || !rows.length) {
     notify.error('Nothing to export in the current view.');
     return;
@@ -38,26 +38,52 @@ export async function exportListPdf({ title, subtitle = '', fileName, columns, r
     // figures into two lines each.
     const doc = new jsPDF({ orientation: cols.length > 6 ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
 
-    doc.setFontSize(14);
-    doc.text(String(title || 'Export'), 40, 40);
-    if (subtitle) {
+    const polished = reportStyle === 'statement';
+    let startY = 56;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(polished ? 16 : 14);
+    doc.setTextColor(15, 23, 42);
+    doc.text(String(metaLines[0] || title || 'Export'), 40, 40);
+    const details = metaLines.length ? metaLines.slice(1) : (subtitle ? [subtitle] : []);
+    if (details.length) {
       doc.setFontSize(9);
-      doc.setTextColor(110);
-      doc.text(String(subtitle), 40, 56);
+      details.forEach((line, index) => {
+        const isLedgerTitle = polished && String(line).startsWith('Ledger Statement');
+        doc.setTextColor(isLedgerTitle ? 15 : 100, isLedgerTitle ? 23 : 116, isLedgerTitle ? 42 : 139);
+        doc.setFont('helvetica', isLedgerTitle ? 'bold' : 'normal');
+        doc.text(String(line), 40, 58 + (index * 13));
+      });
+      doc.setFont('helvetica', 'normal');
       doc.setTextColor(0);
+      startY = 92 + ((details.length - 1) * 13);
     }
 
+    const bodyRows = rows.map((row) => cols.map((c) => cellValue(c, row)));
+    const tailRows = footerRows.map((row) => cols.map((c) => cellValue(c, row)));
+
     autoTable(doc, {
-      startY: subtitle ? 70 : 56,
+      startY,
       head: [cols.map((c) => c.label)],
-      body: rows.map((row) => cols.map((c) => cellValue(c, row))),
-      styles: { fontSize: 8, cellPadding: 4 },
-      headStyles: { fillColor: [245, 245, 244], textColor: 40, fontStyle: 'bold' },
+      body: [...bodyRows, ...tailRows],
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 4, fillColor: [255, 255, 255], lineColor: [226, 232, 240], lineWidth: polished ? 0.35 : 0.15 },
+      headStyles: polished
+        ? { fillColor: [245, 247, 250], textColor: [15, 23, 42], fontStyle: 'bold', lineColor: [226, 232, 240], lineWidth: 0.6 }
+        : { fillColor: [245, 245, 244], textColor: 40, fontStyle: 'bold' },
       columnStyles: cols.reduce((acc, c, i) => {
         if (c.align === 'right') acc[i] = { halign: 'right' };
         return acc;
       }, {}),
       margin: { left: 40, right: 40 },
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.row.index >= bodyRows.length) {
+          data.cell.styles.fillColor = [245, 247, 250];
+          data.cell.styles.textColor = [15, 23, 42];
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.lineColor = [226, 232, 240];
+          data.cell.styles.lineWidth = 0.5;
+        }
+      },
     });
 
     if (footNote) {

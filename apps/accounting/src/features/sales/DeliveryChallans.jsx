@@ -75,15 +75,6 @@ export default function DeliveryChallans({ db, setDb, currentCompany, onConvert 
   ];
   const challansShown = dcStatus ? challans.filter((c) => String(c.status || 'Open') === dcStatus) : challans;
 
-  const dcStatusCounts = useMemo(() => {
-    const counts = { '': challans.length };
-    for (const c of challans) {
-      const st = String(c.status || 'Open');
-      counts[st] = (counts[st] || 0) + 1;
-    }
-    return counts;
-  }, [challans]);
-
   /*
    * The figures a challan list is read for: how much has gone out of the door,
    * how much of it is still unbilled — money the business has delivered and not
@@ -197,6 +188,10 @@ export default function DeliveryChallans({ db, setDb, currentCompany, onConvert 
     }
     const nextId = (db.deliveryChallans || []).reduce((m, c) => Math.max(m, Number(c.id) || 0), 0) + 1;
     const customer = customers.find((c) => c.id === parseInt(form.customerId));
+    if (customer?.isActive === false) {
+      notify.error('This customer is inactive. Activate the customer before creating a delivery challan.');
+      return;
+    }
     const lines = form.items
       .filter((l) => String(l.itemId || '').trim())
       .map((l) => ({ ...l, quantity: Number(l.quantity) || 1, rate: Number(l.rate) || 0 }));
@@ -333,7 +328,7 @@ export default function DeliveryChallans({ db, setDb, currentCompany, onConvert 
    */
   if (open) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-3">
       {open ? (
         <form
           ref={formRef}
@@ -342,7 +337,7 @@ export default function DeliveryChallans({ db, setDb, currentCompany, onConvert 
             e.preventDefault();
             save();
           }}
-          className="ui-card p-5 space-y-4"
+          className="ui-creation-form ui-card p-3 space-y-3"
         >
           <DocFormActions
       title="New Delivery Challan"
@@ -506,9 +501,11 @@ export default function DeliveryChallans({ db, setDb, currentCompany, onConvert 
   return (
     <DocumentListShell
       entity="deliveryChallan"
+      className="sales-list-page"
       title="Delivery Challans"
       company={currentCompany}
       search={{
+        before: <select value={dcStatus} onChange={(event) => setDcStatus(event.target.value)} className="ui-select ui-ctl-compact w-40" aria-label="Challan status">{DC_STATUS_TABS.map((item) => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select>,
         value: dcSearch.query,
         onChange: dcSearch.setQuery,
         placeholder: 'Search challans…',
@@ -539,20 +536,11 @@ export default function DeliveryChallans({ db, setDb, currentCompany, onConvert 
         { label: 'Invoiced', value: dcHeadline.invoiced, tone: 'paid', Icon: Receipt },
         { label: 'On job work', value: dcHeadline.jobWork, tone: 'partial', Icon: Wrench },
       ]}
-      tabs={DC_STATUS_TABS}
-      tabsLabel="Challan status"
-      statusValue={dcStatus}
-      statusCounts={dcStatusCounts}
-      onStatusChange={setDcStatus}
-      tip={{
-        storageKey: 'neev.tip.deliveryChallans',
-        text: 'Goods that left on a challan are still yours to bill — "Out, not billed" is the list to work through.',
-        Icon: Truck,
-      }}
+      denseCards
 
 
     >
-      <div className="overflow-x-auto ui-table-scroll">
+      <div className="overflow-x-auto ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}>
         <table className="ui-table ui-table-wide ui-table-sticky">
             <thead>
               <tr>
@@ -597,7 +585,7 @@ export default function DeliveryChallans({ db, setDb, currentCompany, onConvert 
                   <td className="ui-col-entity">{c.customerName}</td>
                   <td className="ui-col-meta">{c.purpose}</td>
                   <td className="ui-col-amount"><MoneyValue value={c.value} company={currentCompany} /></td>
-                  <td><StatusPill status={c.status} /></td>
+                  <td className="whitespace-nowrap"><StatusPill status={c.status} /></td>
                   <td className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button

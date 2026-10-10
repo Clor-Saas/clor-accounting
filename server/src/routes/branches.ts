@@ -25,6 +25,7 @@ const branchSchema = z.object({
   phone: z.string().max(30).optional().nullable(),
   email: z.string().email().optional().nullable(),
   contactPerson: z.string().max(100).optional().nullable(),
+  isActive: z.boolean().optional(),
   parentBranchId: z.string().optional().nullable(),
   shareHeadOfficeSettings: z.boolean().optional().default(false),
 });
@@ -91,10 +92,11 @@ branchesRouter.post('/orgs/:orgId/branches', requirePermission('MASTERS', Permis
       phone: body.phone ?? null,
       email: body.email ?? null,
       contactPerson: body.contactPerson ?? null,
+      isActive: body.isActive ?? true,
       parentBranchId: body.parentBranchId ?? null,
       shareHeadOfficeSettings: Boolean(body.shareHeadOfficeSettings),
       createdByUserId: userId,
-    },
+    } as any,
     });
 
     await tx.userBranchMembership.create({
@@ -133,7 +135,7 @@ branchesRouter.patch('/orgs/:orgId/branches/:branchId', requirePermission('MASTE
   const updated = await prisma.branch.update({
     where: { id: branchId },
     data: {
-      ...('branchCode' in body ? { branchCode: body.branchCode } : {}),
+      // Branch code is a permanent accounting identity after creation.
       ...('branchName' in body ? { branchName: body.branchName } : {}),
       ...('addressLine1' in body ? { addressLine1: body.addressLine1 } : {}),
       ...('addressLine2' in body ? { addressLine2: body.addressLine2 ?? null } : {}),
@@ -145,11 +147,12 @@ branchesRouter.patch('/orgs/:orgId/branches/:branchId', requirePermission('MASTE
       ...('phone' in body ? { phone: body.phone ?? null } : {}),
       ...('email' in body ? { email: body.email ?? null } : {}),
       ...('contactPerson' in body ? { contactPerson: body.contactPerson ?? null } : {}),
+      ...('isActive' in body ? { isActive: body.isActive } : {}),
       ...('parentBranchId' in body ? { parentBranchId: body.parentBranchId ?? null } : {}),
       ...('shareHeadOfficeSettings' in body ? { shareHeadOfficeSettings: Boolean(body.shareHeadOfficeSettings) } : {}),
       // update audit via updatedAt (Prisma @updatedAt)
       createdByUserId: existing.createdByUserId || userId,
-    },
+    } as any,
   });
 
   res.json({ branch: updated });
@@ -165,6 +168,37 @@ branchesRouter.delete('/orgs/:orgId/branches/:branchId', requirePermission('MAST
   const existing = await prisma.branch.findFirst({ where: { accountId, orgId, id: branchId } });
   if (!existing) return res.status(404).json({ error: 'Branch not found' });
 
-  await prisma.branch.delete({ where: { id: branchId } });
+  const transactionCounts = await Promise.all([
+    prisma.invoice.count({ where: { accountId, orgId, branchId } }),
+    prisma.bill.count({ where: { accountId, orgId, branchId } }),
+    prisma.estimate.count({ where: { accountId, orgId, branchId } }),
+    prisma.purchaseOrderDoc.count({ where: { accountId, orgId, branchId } }),
+    prisma.salesOrderDoc.count({ where: { accountId, orgId, branchId } }),
+    prisma.deliveryChallan.count({ where: { accountId, orgId, branchId } }),
+    prisma.expense.count({ where: { accountId, orgId, branchId } }),
+    prisma.creditNote.count({ where: { accountId, orgId, branchId } }),
+    prisma.debitNote.count({ where: { accountId, orgId, branchId } }),
+    prisma.journalEntry.count({ where: { accountId, orgId, branchId } }),
+    prisma.payment.count({ where: { accountId, orgId, branchId } }),
+    prisma.inventoryAdjustment.count({ where: { accountId, orgId, branchId } }),
+    prisma.interBranchTransfer.count({ where: { accountId, orgId, OR: [{ branchId }, { sourceBranchId: branchId }, { targetBranchId: branchId }] } }),
+  ]);
+  if (transactionCounts.some((count) => count > 0)) {
+    return res.status(409).json({ error: 'This branch cannot be deleted because transactions are associated with it. Mark it inactive instead.' });
+  }
+
+  const childBranch = await prisma.branch.findFirst({ where: { accountId, orgId, parentBranchId: branchId }, select: { id: true } });
+  if (childBranch) {
+    return res.status(409).json({ error: 'This branch cannot be deleted while another branch is linked below it.' });
+  }
+
+  try {
+    await prisma.branch.delete({ where: { id: branchId } });
+  } catch (error: any) {
+    if (error?.code === 'P2003') {
+      return res.status(409).json({ error: 'This branch cannot be deleted because records are associated with it. Mark it inactive instead.' });
+    }
+    throw error;
+  }
   res.json({ ok: true });
 });

@@ -3,7 +3,6 @@ import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronDown, Eye, MoreVert
 
 import DocumentListShell from '@ui/components/list/DocumentListShell';
 import { LIST_PERIODS, usePeriodFilter } from '@ui/components/ListControls';
-import PopupSelect from '@ui/components/pickers/PopupSelect';
 import Popover from '@ui/components/ui/Popover';
 import { EmptyState, StatusPill } from '@ui/components/ui/Primitives';
 import { useDismissable } from '@ui/components/ui/useDismissable';
@@ -84,6 +83,8 @@ export default function CashBankTransactions({
     <DocumentListShell
       entity="transfer"
       title="Transactions"
+      tight
+      className="cash-bank-transactions-page"
       company={currentCompany}
       moreItems={[
         onImportStatement ? { key: 'import', label: 'Import statement', Icon: Upload } : null,
@@ -115,8 +116,32 @@ export default function CashBankTransactions({
         if (key === 'accounts') onOpenAccounts?.();
       }}
       headerExtras={
-        newItems.length ? (
-          <>
+        <>
+          <select
+            className="ui-select ui-ctl-compact w-52"
+            aria-label="Account"
+            value={String(accountInList || '')}
+            onChange={(event) => setAccountId(event.target.value)}
+          >
+            <option value="">All accounts</option>
+            {accounts.map((account) => <option key={account.id} value={String(account.id)}>{account.name}</option>)}
+          </select>
+          <select
+            className="ui-select ui-ctl-compact w-36"
+            aria-label="Period"
+            value={period.period}
+            onChange={(event) => period.setPeriod(event.target.value)}
+          >
+            {LIST_PERIODS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+          </select>
+          {period.period === 'custom' ? (
+            <>
+              <input id="cb-from" aria-label="From date" type="date" className="ui-input ui-ctl-compact w-36" value={period.dateFrom} onChange={(event) => period.setDateFrom(event.target.value)} />
+              <input id="cb-to" aria-label="To date" type="date" className="ui-input ui-ctl-compact w-36" value={period.dateTo} onChange={(event) => period.setDateTo(event.target.value)} />
+            </>
+          ) : null}
+          {newItems.length ? (
+            <>
             <button
               type="button"
               ref={newBtnRef}
@@ -142,70 +167,13 @@ export default function CashBankTransactions({
                 </div>
               </Popover>
             ) : null}
-          </>
-        ) : null
-      }
-      above={
-        /* Account, then period, on one line — the order somebody asks the
-           question in, and the only two narrowings this list has. */
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-0 sm:w-72">
-            <PopupSelect
-              label="Account"
-      title="accounts"
-              value={String(accountInList || '')}
-              onChange={(next) => setAccountId(String(next || ''))}
-              options={[
-                { value: '', label: 'All accounts' },
-                ...accounts.map((a) => ({ value: String(a.id), label: String(a.name || '') })),
-              ]}
-              placeholder="All accounts"
-              showValueSubtext={false}
-            />
-          </div>
-          <div className="min-w-0 sm:w-56">
-            <PopupSelect
-              label="Period"
-      title="periods"
-              value={period.period}
-              onChange={(next) => period.setPeriod(String(next || 'all'))}
-              options={LIST_PERIODS.map((p) => ({ value: p.key, label: p.label }))}
-              placeholder="All time"
-              showValueSubtext={false}
-            />
-          </div>
-
-          {/* Only a custom range needs the two dates; a preset has already
-              answered them. */}
-          {period.period === 'custom' ? (
-            <>
-              <div>
-                <label className="ui-label" htmlFor="cb-from">From</label>
-                <input
-                  id="cb-from"
-                  type="date"
-                  className="ui-input"
-                  value={period.dateFrom}
-                  onChange={(e) => period.setDateFrom(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="ui-label" htmlFor="cb-to">To</label>
-                <input
-                  id="cb-to"
-                  type="date"
-                  className="ui-input"
-                  value={period.dateTo}
-                  onChange={(e) => period.setDateTo(e.target.value)}
-                />
-              </div>
             </>
           ) : null}
-        </div>
+        </>
       }
     >
-      <div className="ui-table-scroll">
-        <table className="ui-table ui-table-wide ui-table-sticky">
+      <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 9rem)' }}>
+        <table className={`ui-table ui-table-wide ui-table-sticky ${rows.length ? '' : 'cash-bank-empty-table'}`}>
           <thead>
             <tr>
               <th scope="col">Date</th>

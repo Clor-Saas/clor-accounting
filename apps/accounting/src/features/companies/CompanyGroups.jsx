@@ -437,6 +437,7 @@ export default function CompanyGroups({ db, setDb, currentCompany, onSwitched, i
         { label: 'Billed by the group', value: groupTotals.billed, tone: 'sent', Icon: Receipt },
         { label: 'Owed to the group', value: groupTotals.outstanding, tone: 'outstanding', Icon: FileText },
       ]}
+      denseCards
       tip={{
         storageKey: 'neev.tip.companies',
         Icon: Building2,

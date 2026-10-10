@@ -90,8 +90,16 @@ export function assignUserRole(orgId, userId, roleId, branchId = null) {
 }
 
 // Warehouses
+const warehouseLoads = new Map();
+
 export function listWarehouses(orgId) {
-  return apiFetch(`/orgs/${encodeURIComponent(orgId)}/warehouses`, { skipWarehouseHeader: true });
+  const key = String(orgId || '').trim();
+  if (warehouseLoads.has(key)) return warehouseLoads.get(key);
+
+  const request = apiFetch(`/orgs/${encodeURIComponent(key)}/warehouses`, { skipWarehouseHeader: true })
+    .finally(() => warehouseLoads.delete(key));
+  warehouseLoads.set(key, request);
+  return request;
 }
 
 export function createWarehouse(orgId, payload) {

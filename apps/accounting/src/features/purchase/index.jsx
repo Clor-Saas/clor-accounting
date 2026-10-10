@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DocFormActions, AmountInWordsBand, DocFormFootnote } from '@ui/components/DocumentForm';
 
 import { createPortal } from 'react-dom';
-import { returnableLines, returnStatusLabel } from '@ui/utils/returns';
+import { returnableLines } from '@ui/utils/returns';
 import BillPreview from './BillPreview';
 import KnockOffForm from '@ui/components/KnockOffForm';
 import { isOnAccount, noteBalance, documentOutstanding } from '@ui/utils/onAccount';
@@ -16,10 +16,10 @@ import { notify, confirmDialog } from '@ui/components/ui/notify';
 import { useFieldErrors } from '@ui/components/ui/useFieldErrors';
 import { PermissionButton } from '@ui/permissions/ActionGuard';
 import { FieldError, FieldErrorSummary } from '@ui/components/ui/Primitives';
-import { createDocApi, deleteDocApi, hasApiSession, saveSettlementApi } from '@ui/api/purchaseDocs';
+import { createDocApi, deleteDocApi, hasApiSession, saveSettlementApi, updateDocApi } from '@ui/api/purchaseDocs';
 import { resolvePurchaseRate } from '@ui/utils/pricing';
 import { isTracked, needsExpiry } from '@ui/utils/batches';
-import { Ban, Building2, SlidersHorizontal, ClipboardList, Copy, CreditCard, Download, Eye, FileStack, FileText, Lock, MoreVertical, NotebookPen, Package, Pencil, Plus, Printer, Receipt, RefreshCw, ShoppingCart, Trash2, Truck, Upload, X } from 'lucide-react';
+import { Ban, Building2, SlidersHorizontal, ClipboardList, Copy, CreditCard, Download, Eye, FileStack, FileText, Lock, MoreVertical, NotebookPen, Package, Pencil, Plus, Printer, Receipt, ShoppingCart, Trash2, Truck, Upload, X } from 'lucide-react';
 import { EmptyState, TableTotals, StatusPill } from '@ui/components/ui/Primitives';
 
 import VendorPicker from '../../components/pickers/VendorPicker';
@@ -39,9 +39,8 @@ import DocumentCustomFields, { hasCustomFieldsAt } from '@ui/components/Document
 import DocumentPrintView from '@ui/components/DocumentPrintView';
 import PrintDownloadFrame from '@ui/components/PrintDownloadFrame';
 import { getVisibleCustomFields } from '@ui/utils/invoicePrefs';
-import { tdsVariesByDeductee, DEDUCTEE_TYPES } from '@ui/utils/tds';
-import { priorBaseFor, resolveTds, returnQuarter, tdsEventFrom, tdsLedgersFor, tdsReversalEventFrom } from '../tds/engine';
-import { TDS_NATURES, natureByCode, natureForSection } from '../tds/ruleMaster';
+import { priorBaseFor, resolveTds, returnQuarter, tdsEventFrom, tdsReversalEventFrom } from '../tds/engine';
+import { natureForSection } from '../tds/ruleMaster';
 import { tdsGroupSide } from '@ui/utils/tdsLedgers';
 import {
   computeGstForLine,
@@ -183,6 +182,10 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
 
     return {
       ...base,
+      number: String(initialData.number || ''),
+      date: initialData.date || base.date,
+      dueDate: initialData.dueDate || base.dueDate,
+      status: initialData.status || base.status,
       refNo: initialData.refNo || '',
       refDate: initialData.refDate || '',
       vendorId:
@@ -196,6 +199,7 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
       tdsRate: initialData.tdsRate ?? '',
       // Kept so a saved bill can close the order it came from.
       sourcePurchaseOrderId: initialData.sourcePurchaseOrderId ?? null,
+      customFields: initialData.customFields || {},
       items: copiedItems.length ? copiedItems : base.items,
     };
   });
@@ -438,22 +442,18 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
         transactionDate: formData.date,
         taxableBase: Number(computed.subtotal || 0),
         explicitNatureCode: tdsNatureCode,
+        explicitLedgerId: formData.tdsLedgerId,
         explicitRate: formData.tdsRateTouched && String(formData.tdsRate ?? '').trim() !== '' ? formData.tdsRate : null,
         side: 'PAYABLE',
         priorBase: tdsPriorValue,
         ledgers: tdsLedgerMaster,
       }),
-    [currentCompany, vendor, formData.date, formData.tdsRate, formData.tdsRateTouched, computed.subtotal, tdsNatureCode, tdsPriorValue, tdsLedgerMaster]
+    [currentCompany, vendor, formData.date, formData.tdsLedgerId, formData.tdsRate, formData.tdsRateTouched, computed.subtotal, tdsNatureCode, tdsPriorValue, tdsLedgerMaster]
   );
 
-  /* The ledgers this deduction may post to — this nature, payable side, active
-     only. §14: a Contractor deduction never offers the Professional Fees one. */
-  const tdsLedgers = React.useMemo(
-    () =>
-      tdsNatureCode
-        ? tdsLedgersFor(tdsLedgerMaster, { natureCode: tdsNatureCode, side: 'PAYABLE' })
-        : tdsLedgersFor(tdsLedgerMaster, { natureCode: '__none__', side: 'PAYABLE' }),
-    [tdsLedgerMaster, tdsNatureCode]
+  const tdsPayableLedgers = React.useMemo(
+    () => tdsLedgerMaster.filter((ledger) => ledger.tdsSide === 'PAYABLE' && ledger.active !== false),
+    [tdsLedgerMaster]
   );
 
   const tdsSectionCode = tds.sectionCode || '';
@@ -497,7 +497,7 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
     }
     // Everything about a field, gathered in one pass and shown at the fields —
     // not one at a time in the opposite corner of the screen.
-    const billNumberClash = db.bills.some((b) => b.companyId === currentCompany.id && String(b.number || '').trim() === billNumber);
+    const billNumberClash = db.bills.some((b) => b.companyId === currentCompany.id && String(b.id) !== String(initialData?.id || '') && String(b.number || '').trim() === billNumber);
 
     fieldErrors.reset();
     fieldErrors.require('number', billNumber, 'Bill number is required');
@@ -557,7 +557,10 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
     let serverNumber = '';
     if (!wantsDraft && hasApiSession()) {
       try {
-        const saved = await createDocApi('bill', {
+        const saveBill = initialData?.backendDocId
+          ? (payload) => updateDocApi('bill', initialData.backendDocId, payload)
+          : (payload) => createDocApi('bill', payload);
+        const saved = await saveBill({
           branchId: String(branchIdInList || branchIdForNumbering || effectiveDefaultBranchId || '').trim() || undefined,
           warehouseId: String(formData.warehouseId || effectiveDefaultWarehouseId || '').trim() || undefined,
           number: billNumber || undefined,
@@ -576,7 +579,7 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
           igstTotal: computed.igstTotal,
           gstTotal: computed.gstTotal,
           total: computed.total,
-          status: 'Unpaid',
+          status: initialData?.status && !/draft/i.test(initialData.status) ? initialData.status : 'Unpaid',
           items: computed.lines,
           /*
            * The deduction rides with the document. The server credits TDS
@@ -601,10 +604,10 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
     }
 
     const newBill = {
-      id: db.bills.length + 1,
+      id: initialData?.id ?? ((db.bills || []).reduce((max, bill) => Math.max(max, Number(bill.id) || 0), 0) + 1),
       companyId: currentCompany.id,
       ...formData,
-      backendDocId,
+      backendDocId: backendDocId || initialData?.backendDocId || null,
       number: serverNumber || billNumber,
       warehouseId: String(formData.warehouseId || effectiveDefaultWarehouseId || '').trim(),
       branchId: String(branchIdInList || branchIdForNumbering || effectiveDefaultBranchId || '').trim(),
@@ -632,10 +635,11 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
       igstTotal: computed.igstTotal,
       gstTotal: computed.gstTotal,
       total: computed.total,
-      paidAmount: 0,
-      status: wantsDraft ? 'Draft' : 'Unpaid',
+      paidAmount: Number(initialData?.paidAmount || 0),
+      status: wantsDraft ? 'Draft' : (initialData?.status && !/draft/i.test(initialData.status) ? initialData.status : 'Unpaid'),
       sourcePurchaseOrderId: formData.sourcePurchaseOrderId ?? null,
-      createdAt: new Date().toISOString(),
+      createdAt: initialData?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     // Batch-tracked lines create their batch records on receipt.
@@ -677,13 +681,14 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
      * edited later.
      */
     const tdsEvents = Array.isArray(db.tdsTransactions) ? db.tdsTransactions : [];
+    const existingTdsEvent = initialData?.id ? tdsEvents.find((event) => String(event?.sourceType) === 'bill' && String(event?.sourceId) === String(initialData.id) && !/reversal/i.test(String(event?.status || ''))) : null;
     /* §20: a DRAFT is not a deduction. The compliance event exists only for
        a posted document — a draft bill writes nothing to the register, the
        challan queue or the return. */
     const tdsEvent =
       tdsAmount > 0 && !wantsDraft
         ? {
-            id: tdsEvents.reduce((m, t) => Math.max(m, Number(t?.id) || 0), 0) + 1,
+            id: existingTdsEvent?.id ?? (tdsEvents.reduce((m, t) => Math.max(m, Number(t?.id) || 0), 0) + 1),
             ...tdsEventFrom(tds, {
               company: currentCompany,
               party: vendorObj,
@@ -694,15 +699,24 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
           }
         : null;
 
-    setDb({
-      ...db,
-      tdsTransactions: tdsEvent ? [...tdsEvents, tdsEvent] : db.tdsTransactions,
-      bills: [...db.bills, newBill],
-      batches: newBatches.length ? [...(db.batches || []), ...newBatches] : db.batches,
-      companies: bumpCompanyNextNumber({ db, companyId: currentCompany.id, voucherKey: 'bill', usedNumber: billNumber, branchId: branchIdForNumbering }),
-    });
+    const remainingTdsEvents = initialData?.id
+      ? tdsEvents.filter((event) => !(String(event?.sourceType) === 'bill' && String(event?.sourceId) === String(initialData.id) && !/reversal/i.test(String(event?.status || ''))))
+      : tdsEvents;
+    const oldBillNumber = String(initialData?.number || '');
+    setDb((prev) => ({
+      ...prev,
+      tdsTransactions: tdsEvent ? [...remainingTdsEvents, tdsEvent] : remainingTdsEvents,
+      bills: initialData?.id
+        ? (prev.bills || []).map((bill) => String(bill.id) === String(initialData.id) ? newBill : bill)
+        : [...(prev.bills || []), newBill],
+      batches: [
+        ...(prev.batches || []).filter((batch) => !initialData?.id || String(batch.sourceBillNumber || '') !== oldBillNumber),
+        ...newBatches,
+      ],
+      companies: initialData?.id ? prev.companies : bumpCompanyNextNumber({ db: prev, companyId: currentCompany.id, voucherKey: 'bill', usedNumber: billNumber, branchId: branchIdForNumbering }),
+    }));
     onClose?.();
-    notify.success(`Bill created successfully!${newBatches.length ? ` ${newBatches.length} batch(es) received.` : ''}`);
+    notify.success(`${initialData?.id ? 'Bill updated' : 'Bill created'} successfully!${newBatches.length ? ` ${newBatches.length} batch(es) received.` : ''}`);
   };
 
   // The shared document contract: same keys on a bill as on an invoice.
@@ -714,7 +728,7 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
   });
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} noValidate className="space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} noValidate className="ui-creation-form space-y-3">
       {/* One bar: the document's name on the left, and every way out of it on
           the right. Save Draft used to sit in a row of its own under the
           primary, which read as two separate decisions. */}
@@ -1051,7 +1065,7 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
                       <td className="px-3 py-2">
                         {/* The unit belongs to the item, so it is shown rather
                             than asked for. */}
-                        <span className="text-[0.8125rem] ui-muted">{String(master?.unit || '').trim() || '—'}</span>
+                        <span className="text-sm ui-muted">{String(master?.unit || '').trim() || '—'}</span>
                       </td>
                       <td className="px-3 py-2">
                         <input
@@ -1081,7 +1095,7 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
                         />
                       </td>
                       <td className="px-3 py-2">
-                        <span className="ui-num block text-[0.8125rem]">{Number(item.gstRate ?? 0)}%</span>
+                        <span className="ui-num block text-sm">{Number(item.gstRate ?? 0)}%</span>
                       </td>
                       <td className="ui-col-amount px-3 py-2">{formatMoney(item.lineTotal || 0, currentCompany)}</td>
                       <td className="px-3 py-2">
@@ -1139,8 +1153,9 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
           <FieldError error={fieldErrors.error('items')} id={fieldErrors.errorId('items')} />
         </div>
 
-        <div className="mt-4 flex justify-end">
-          <div className="w-80 space-y-2">
+        <div className="mt-4">
+          <div className="w-full space-y-2">
+            <div className="ms-auto w-80 space-y-2">
             <div className="flex justify-between">
               <span>Subtotal:</span>
               <span className="ui-money">{formatMoney(computed.subtotal, currentCompany)}</span>
@@ -1166,6 +1181,7 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
               <span>Total:</span>
               <span className="ui-money">{formatMoney(computed.total, currentCompany)}</span>
             </div>
+            </div>
 
             {/*
               The deduction sits under the total it is taken from.
@@ -1176,11 +1192,11 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
               The ledger and section are on the bill and in the return.
             */}
             {!tdsPickerOpen && !formData.tdsNatureCode ? (
-              <div className="pt-1">
+              <div className="ms-auto mt-2 w-full border-t ui-border-c pt-2 lg:w-[35%]">
                 <button
                   type="button"
                   onClick={() => setTdsPickerOpen(true)}
-                  className="ui-btn ui-btn-ghost ui-btn-sm !px-0"
+                  className="ui-btn ui-btn-ghost ui-btn-sm w-full justify-start !px-0 text-sm"
                   disabled={!tdsEnabledHere}
       title={tdsEnabledHere ? undefined : 'Switch TDS on under Settings → Tax compliances first.'}
                 >
@@ -1194,103 +1210,62 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
               </div>
             ) : null}
 
-            <div className="pt-1" hidden={!tdsPickerOpen}>
-              {/*
-                Nature first, then the ledger it posts to — and the ledger list
-                is narrowed to that nature, which is §14 and the whole reason a
-                deduction cannot land in the wrong account.
-              */}
-              <label className="ui-label" htmlFor="bill-tds-nature">
-                TDS deduction <span className="ui-subtle font-normal">(deducted from this vendor)</span>
-              </label>
-              <select
-                id="bill-tds-nature"
-                className="ui-select w-full"
-                value={formData.tdsNatureCode || ''}
-                onChange={(e) => {
-                  const code = e.target.value;
-                  setFormData((p) => ({ ...p, tdsNatureCode: code, tdsLedgerId: '', tdsRate: '', tdsRateTouched: false }));
-                  if (!code) setTdsPickerOpen(false);
-                }}
-              >
-                <option value="">No deduction</option>
-                {TDS_NATURES.filter((n) => n.active !== false).map((n) => (
-                  <option key={n.code} value={n.code}>{n.name}</option>
-                ))}
-              </select>
-
-              {formData.tdsNatureCode ? (
-                <div className="mt-2">
-                  <label className="ui-label" htmlFor="bill-tds-ledger">TDS ledger</label>
+            <div className="ms-auto mt-2 w-full border-t ui-border-c pt-2 lg:w-[35%]" hidden={!tdsPickerOpen && !(tdsAmount > 0)}>
+              <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_7.5rem] items-end gap-2">
+                <div className="min-w-0">
+                  <label className="ui-label" htmlFor="bill-tds-ledger">TDS</label>
                   <select
                     id="bill-tds-ledger"
                     className="ui-select w-full"
                     value={formData.tdsLedgerId || tds.ledgerId || ''}
-                    onChange={(e) => setFormData((p) => ({ ...p, tdsLedgerId: e.target.value }))}
+                    onChange={(e) => {
+                      const ledgerId = e.target.value;
+                      const ledger = tdsPayableLedgers.find((row) => String(row.id) === String(ledgerId));
+                      const natureCode = String(ledger?.tdsNatureCode || natureForSection(ledger?.tdsSection)?.code || '');
+                      setFormData((p) => ({ ...p, tdsLedgerId: ledgerId, tdsNatureCode: natureCode, tdsRate: '', tdsRateTouched: false }));
+                      if (!ledgerId) setTdsPickerOpen(false);
+                    }}
                   >
-                    <option value="">Select ledger</option>
-                    {tdsLedgers.map((l) => (
-                      <option key={l.id} value={String(l.id)}>{l.name}</option>
+                    <option value="">No deduction</option>
+                    {tdsPayableLedgers.map((ledger) => (
+                      <option key={ledger.id} value={String(ledger.id)}>{ledger.name}</option>
                     ))}
                   </select>
-                  {!tdsLedgers.length ? (
+                </div>
+                <div>
+                  <label className="ui-label" htmlFor="bill-tds-rate">%</label>
+                  <input
+                    id="bill-tds-rate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="ui-input ui-mono w-full"
+                    disabled={!formData.tdsNatureCode}
+                    value={formData.tdsNatureCode ? (formData.tdsRateTouched ? formData.tdsRate : tds.rate) : ''}
+                    onChange={(e) =>
+                      setFormData((p) => ({ ...p, tdsRate: e.target.value, tdsRateTouched: true }))
+                    }
+                  />
+                </div>
+                <div>
+                  <span className="ui-label block">Amount</span>
+                  <output className="ui-input ui-sunken ui-money flex items-center justify-end" aria-label="TDS amount">
+                    {formatMoney(tdsAmount, currentCompany)}
+                  </output>
+                </div>
+              </div>
+
+              {formData.tdsNatureCode ? (
+                <div className="mt-2">
+                  {!tdsPayableLedgers.length ? (
                     <p className="ui-caption mt-1">
-                      No TDS Payable ledger is mapped to this nature yet. Create one under TDS Payable in the
-                      chart of accounts and map it to {natureByCode(formData.tdsNatureCode)?.name || 'this nature'}.
+                      No TDS Payable ledger is configured yet. Create one under TDS Payable in the chart of accounts.
                     </p>
                   ) : null}
                   {tds.statutoryReference ? (
                     <p className="ui-caption mt-1">
                       {tds.statutoryReference} · the rule in force on {formData.date}.
                     </p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {formData.tdsNatureCode ? (
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="ui-label" htmlFor="bill-tds-rate">Rate (%)</label>
-                    <input
-                      id="bill-tds-rate"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="ui-input ui-mono w-full"
-                      /*
-                        The rule's rate until somebody types over it — §13 shows
-                        a rate, not an empty box to guess at.
-
-                        "Typed over" is its own flag rather than an empty
-                        string, or clearing the box would show the rule's figure
-                        again and the next keystroke would append to it: 2
-                        becomes 220 instead of 20.
-                      */
-                      value={formData.tdsRateTouched ? formData.tdsRate : tds.rate}
-                      onChange={(e) =>
-                        setFormData((p) => ({ ...p, tdsRate: e.target.value, tdsRateTouched: true }))
-                      }
-                    />
-                  </div>
-                  {tdsVariesByDeductee(tdsSectionCode) ? (
-                    <div>
-                      <label className="ui-label" htmlFor="bill-tds-deductee">Payee</label>
-                      <select
-                        id="bill-tds-deductee"
-                        className="ui-select w-full"
-                        value={formData.tdsDeducteeType || 'COMPANY'}
-                        onChange={(e) => {
-                          const type = e.target.value;
-                          /* The payee changes the rate under 194C — and the
-                             engine reads it, so this only clears the override. */
-                          setFormData((p) => ({ ...p, tdsDeducteeType: type, tdsRate: '', tdsRateTouched: false }));
-                        }}
-                      >
-                        {DEDUCTEE_TYPES.map((d) => (
-                          <option key={d.key} value={d.key}>{d.label}</option>
-                        ))}
-                      </select>
-                    </div>
                   ) : null}
                 </div>
               ) : null}
@@ -1310,39 +1285,15 @@ export const BillForm = ({ db, setDb, currentCompany, initialData, onClose, ware
                 </p>
               ) : null}
 
-              {formData.tdsLedgerId ? (
-                <button
-                  type="button"
-                  onClick={() => setTdsPickerOpen(false)}
-                  className="ui-btn ui-btn-ghost ui-btn-sm !px-0 mt-1"
-                >
-                  Done
-                </button>
-              ) : null}
             </div>
 
             {tdsAmount > 0 ? (
-              <>
-                <div className="flex justify-between pt-1">
-                  <span>
-                    Less: TDS
-                    {!tdsPickerOpen ? (
-                      <button
-                        type="button"
-                        onClick={() => setTdsPickerOpen(true)}
-                        className="ms-2 text-xs underline ui-muted hover:ui-fg"
-                      >
-                        Change
-                      </button>
-                    ) : null}
-                  </span>
-                  <span className="text-[rgb(var(--neg-ink))]">− {formatMoney(tdsAmount, currentCompany)}</span>
-                </div>
+              <div className="ms-auto w-80 space-y-2 pt-1">
                 <div className="ui-total-row">
                   <span>Net payable:</span>
                   <span className="ui-money">{formatMoney(netPayable, currentCompany)}</span>
                 </div>
-              </>
+              </div>
             ) : null}
           </div>
         </div>
@@ -1601,6 +1552,9 @@ export const PurchaseOrdersList = ({
     <DocumentListShell
       entity="purchaseOrder"
       title="Purchase Orders"
+      compact
+      tight
+      denseCards
       company={currentCompany}
       search={{
         value: poSearch.query,
@@ -1644,7 +1598,7 @@ export const PurchaseOrdersList = ({
         text: 'An order closes itself when a bill names it — nothing here has to be ticked off by hand.',
       }}
     >
-        <div className="ui-table-scroll">
+        <div className="overflow-x-auto ui-table-scroll purchase-order-table-scroll" data-fill-viewport>
         <table className="ui-table ui-table-wide ui-table-sticky">
           <thead>
             <tr>
@@ -2162,7 +2116,7 @@ export const PurchaseOrderForm = ({
   });
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} className="space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} className="ui-creation-form space-y-3">
       <DocFormActions primaryLabel={isEditPo ? 'Update PO' : 'Create PO'} />
 
       {/*
@@ -2449,7 +2403,6 @@ export const BillsList = ({
 
   // Pinned once per mount: a clock read during render makes every derived
   // age impure and re-renders disagree with each other.
-  const [nowMs] = useState(() => Date.now());
 
   const billFilterChips = React.useMemo(() => {
     const chips = [];
@@ -2534,25 +2487,6 @@ export const BillsList = ({
       window.removeEventListener('resize', onScrollOrResize);
     };
   }, [openMenu?.id]);
-
-/** The answer the status word provokes — how late, or how much is left. */
-const billStatusReason = (doc, status, company, nowMs) => {
-  const s = String(status || '').toLowerCase();
-  const total = Number(doc?.total ?? 0);
-  const paid = Number(doc?.paidAmount ?? 0);
-  if ((s === 'overdue' || s === 'over due') && doc?.dueDate) {
-    const due = new Date(`${String(doc.dueDate).slice(0, 10)}T00:00:00`);
-    const days = Math.max(0, Math.round((nowMs - due.getTime()) / 86400000));
-    return days ? `${days} day${days === 1 ? '' : 's'}` : '';
-  }
-  if (s === 'partial' && total > 0) return `${formatMoney(paid, company)} of ${formatMoney(total, company)}`;
-  if (s === 'unpaid' && doc?.dueDate) {
-    const due = new Date(`${String(doc.dueDate).slice(0, 10)}T00:00:00`);
-    const days = Math.round((due.getTime() - nowMs) / 86400000);
-    if (days >= 0) return `due in ${days} day${days === 1 ? '' : 's'}`;
-  }
-  return '';
-};
 
   const getDerivedStatus = (bill) => {
     const total = Number(bill?.total ?? 0);
@@ -2651,36 +2585,8 @@ const billStatusReason = (doc, status, company, nowMs) => {
     };
   }, [filteredBills]);
 
-  /** Counted over everything the search, period and column filters left standing. */
-  const billStatusCounts = useMemo(() => {
-    const c = { '': billsExStatus.length };
-    for (const b of billsExStatus) {
-      const d = getDerivedStatus(b);
-      c[d] = (c[d] || 0) + 1;
-    }
-    return c;
-  }, [billsExStatus]);
-
   // Over the filtered set, so the figure always describes what is on screen.
   const { pageCount: billPageCount, safePage: safeBillPage, pageRows: pagedBills } = usePaged(filteredBills, perPage, page);
-
-  const billTotals = useMemo(() => {
-    let booked = 0;
-    let owed = 0;
-    let gst = 0;
-    for (const b of filteredBills) {
-      const total = Number(b.total || 0);
-      booked += total;
-      owed += Math.max(0, total - Number(b.tdsAmount || 0) - Number(b.paidAmount || 0));
-      gst += Number(b.gstTotal || 0);
-    }
-    return [
-      { label: 'Booked', value: formatMoney(booked, currentCompany) },
-      { label: 'Payable', value: formatMoney(owed, currentCompany), tone: owed > 0 ? 'neg' : undefined },
-      { label: 'GST', value: formatMoney(gst, currentCompany) },
-    ];
-  }, [filteredBills, currentCompany]);
-
 
   const openRecordPayment = (bill) => {
     // The server-posting disbursement form, same as the Payments screen, so a
@@ -2963,6 +2869,29 @@ const billStatusReason = (doc, status, company, nowMs) => {
       title="Purchase Invoices"
       company={currentCompany}
       search={{
+        before: (
+          <select
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value);
+              setPage(1);
+            }}
+            className="ui-select w-40"
+            aria-label="Bill status"
+          >
+            {[
+              ['All', 'All'],
+              ['Draft', 'Draft'],
+              ['Unpaid', 'Received'],
+              ['Partial', 'Partially paid'],
+              ['Paid', 'Paid'],
+              ['Over due', 'Overdue'],
+              ['Cancelled', 'Cancelled'],
+            ].map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        ),
         value: billSearch.query,
         onChange: (v) => {
           billSearch.setQuery(v);
@@ -3025,34 +2954,14 @@ const billStatusReason = (doc, status, company, nowMs) => {
         { label: 'Unpaid', value: billHeadline.unpaid, tone: 'outstanding', Icon: ClipboardList },
         { label: 'Overdue bills', value: billHeadline.overdue, tone: 'overdue', Icon: Ban },
       ]}
-      tabs={[
-        { value: 'All', label: 'All', tone: 'all' },
-        { value: 'Draft', label: 'Draft', tone: 'draft' },
-        { value: 'Unpaid', label: 'Received', tone: 'sent' },
-        { value: 'Partial', label: 'Partially paid', tone: 'partial' },
-        { value: 'Paid', label: 'Paid', tone: 'paid' },
-        { value: 'Over due', label: 'Overdue', tone: 'overdue' },
-        { value: 'Cancelled', label: 'Cancelled', tone: 'cancelled' },
-      ]}
-      tabsLabel="Bill status"
-      statusValue={statusFilter}
-      statusCounts={{ ...billStatusCounts, All: billsExStatus.length }}
-      onStatusChange={(v) => {
-        setStatusFilter(v);
-        setPage(1);
-      }}
-      tip={{
-        storageKey: 'neev:tip:recurringBills',
-        Icon: RefreshCw,
-        text: 'Bills that repeat every month — rent, AMC, subscriptions — can be scheduled rather than retyped.',
-        actionLabel: 'Set one up',
-        onAction: () => {
-          if (typeof onNavigate === 'function') onNavigate('recurringInvoices');
-        },
-      }}
+      denseCards
     >
-        <div className="ui-table-scroll">
+        <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}>
         <table className="ui-table ui-table-wide ui-table-sticky">
+          <colgroup>
+            <col /><col /><col /><col /><col /><col /><col /><col />
+            <col style={{ width: '2.75rem' }} />
+          </colgroup>
           <thead>
             <tr>
               <ColumnHeader label="Bill #" col="number" state={colFilters} />
@@ -3063,7 +2972,7 @@ const billStatusReason = (doc, status, company, nowMs) => {
               <ColumnHeader label="Amount" col="total" state={colFilters} className="ui-num" align="right" />
               <ColumnHeader label="Status" col="status" state={colFilters} align="center" />
               <ColumnHeader label="Warehouse" col="warehouse" state={colFilters} />
-              <th scope="col"><span className="sr-only">Actions</span></th>
+              <th scope="col" className="w-11 p-0"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody className="ui-rows">
@@ -3099,14 +3008,6 @@ const billStatusReason = (doc, status, company, nowMs) => {
                 const wh = whId ? warehouseById.get(whId) : null;
                 const whLabel = wh ? String(wh?.name || `Warehouse ${wh?.id}`) : whId ? `Warehouse ${whId}` : '-';
                 const derived = getDerivedStatus(b);
-                const returnMark = returnStatusLabel(b, db.debitNotes || [], 'originalBillId');
-                // What the vendor has been debited against this bill, so the
-                // list says how much of it is under dispute, not merely that
-                // some of it is.
-                const debitValue = (db.debitNotes || [])
-                  .filter((dn) => String(dn?.originalBillId ?? '') === String(b.id))
-                  .filter((dn) => String(dn?.status || '').toLowerCase() !== 'cancelled')
-                  .reduce((t, dn) => t + (Number(dn.total) || 0), 0);
                 return (
                   <tr
                     key={b.id}
@@ -3120,20 +3021,10 @@ const billStatusReason = (doc, status, company, nowMs) => {
                     <td className="ui-col-meta">{b.refNo || '-'}</td>
                     <td className="ui-col-date"><DocDate value={b.refDate || '-'} /></td>
                     <td className="ui-col-amount"><MoneyValue value={b.total || 0} company={currentCompany} /></td>
-                    <td>
-                      <StatusPill status={derived} reason={billStatusReason(b, derived, currentCompany, nowMs)} />
-                      {returnMark ? (
-                        <span
-                          className="ml-1 px-2 py-1 rounded-full text-xs font-medium bg-[rgb(var(--warn-soft))] text-[rgb(var(--warn-ink))]"
-      title={`Debit notes of ${formatMoney(debitValue, currentCompany)} raised against this bill`}
-                        >
-                          Debit Note {formatMoney(debitValue, currentCompany)}
-                        </span>
-                      ) : null}
-                    </td>
+                    <td className="whitespace-nowrap"><StatusPill status={derived} /></td>
                     <td className="ui-col-meta">{whLabel}</td>
                     <td
-                      className="relative w-10"
+                      className="relative w-11 min-w-11 max-w-11 p-1 text-center"
                       onMouseDown={(e) => e.stopPropagation()}
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
@@ -3151,10 +3042,10 @@ const billStatusReason = (doc, status, company, nowMs) => {
                           e.stopPropagation();
                           openBillMenu(b.id, e.currentTarget);
                         }}
-                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg border ui-surface ui-hover-sunken ui-border-c"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md ui-hover-sunken"
       title="Actions"
                       >
-                        <MoreVertical size={18} />
+                        <MoreVertical size={17} />
                       </button>
                     </td>
                   </tr>
@@ -3164,13 +3055,6 @@ const billStatusReason = (doc, status, company, nowMs) => {
           </tbody>
         </table>
         </div>
-        <TableTotals
-          count={filteredBills.length}
-          totalCount={bills.length}
-          noun="bills"
-          figures={billTotals}
-        />
-
         <Pagination
           total={filteredBills.length}
           page={safeBillPage}
@@ -3938,7 +3822,7 @@ export const DebitNoteForm = ({
   });
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} className="space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} className="ui-creation-form space-y-3">
       <DocFormActions
         title={screenTitle}
         onBack={onBack}
@@ -4500,6 +4384,9 @@ export const DebitNotesList = ({ db, setDb, openModal, currentCompany, onNewDebi
     <DocumentListShell
       entity="purchaseReturn"
       title="Purchase Returns"
+      compact
+      tight
+      denseCards
       company={currentCompany}
       search={{
         value: dnSearch.query,
@@ -4550,7 +4437,7 @@ export const DebitNotesList = ({ db, setDb, openModal, currentCompany, onNewDebi
         text: 'A debit note on account is money the vendor owes you until it is knocked off a bill — the row says how much is left.',
       }}
     >
-      <div className="ui-table-scroll">
+      <div className="overflow-x-auto ui-table-scroll purchase-return-table-scroll" data-fill-viewport>
         <table className="ui-table ui-table-wide ui-table-sticky">
           <thead className="ui-sunken border-b">
             <tr>

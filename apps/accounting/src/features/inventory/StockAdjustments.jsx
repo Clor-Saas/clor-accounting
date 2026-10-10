@@ -662,6 +662,9 @@ const StockAdjustments = ({
     <DocumentListShell
       entity="adjustment"
       title="Stock Adjustments"
+      compact
+      tight
+      denseCards
       company={currentCompany}
       search={{
         value: adjSearch.query,
@@ -698,17 +701,13 @@ const StockAdjustments = ({
       ]}
       tabs={ADJ_TABS}
       tabsLabel="Adjustment filter"
+      statusInHeader
       statusValue={adjFilter}
       statusCounts={adjCounts}
       onStatusChange={setAdjFilter}
-      tip={{
-        storageKey: 'neev.tip.stockAdjustments',
-        Icon: ClipboardList,
-        text: 'An adjustment is a posting, not a note — removing one puts the stock it moved back.',
-      }}
     >
-      <div className="ui-table-scroll">
-        <table className="ui-table ui-table-wide ui-table-sticky">
+      <div className="overflow-x-auto ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 11.5rem)' }} data-fill-viewport>
+        <table className={`ui-table ui-table-wide ui-table-sticky ${adjRows.length ? '' : 'cash-bank-empty-table'}`}>
           <thead>
             <tr>
               <ColumnHeader label="Date" col="date" state={colFilters} align="center" />

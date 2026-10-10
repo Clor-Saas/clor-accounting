@@ -101,6 +101,9 @@ export default function BatchStock({ db, currentCompany }) {
     <DocumentListShell
       entity="items"
       title="Batch Stock & Expiry"
+      compact
+      tight
+      denseCards
       company={currentCompany}
       search={{
         value: bsSearch.query,
@@ -130,17 +133,13 @@ export default function BatchStock({ db, currentCompany }) {
       ]}
       tabs={BATCH_TABS}
       tabsLabel="Batch filter"
+      statusInHeader
       statusValue={filter}
       statusCounts={batchCounts}
       onStatusChange={setFilter}
-      tip={{
-        storageKey: 'neev.tip.batchStock',
-        Icon: Boxes,
-        text: 'Nothing here is stored — every row is worked out from the bill that brought the batch in and the invoices that took it out.',
-      }}
     >
-      <div className="ui-table-scroll">
-          <table className="ui-table ui-table-wide ui-table-sticky">
+      <div className="overflow-x-auto ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 11.5rem)' }} data-fill-viewport>
+          <table className={`ui-table ui-table-wide ui-table-sticky ${bsSearchRows.length ? '' : 'cash-bank-empty-table'}`}>
             <thead>
               <tr>
                 <th scope="col">Item</th>

@@ -925,7 +925,7 @@ const GenericReport = ({ title, bucket, db, currentCompany, onBack, isEnabled = 
   );
 };
 
-const ReportsWorkspace = ({ db, currentCompany, isEnabled = () => true, branches = [], warehouses = [], defaultBranchId = '', defaultWarehouseId = '' }) => {
+const ReportsWorkspace = ({ db, currentCompany, isEnabled = () => true, branches = [], warehouses = [], defaultBranchId = '', defaultWarehouseId = '', onExit = null }) => {
   const reportDb = useMemo(() => ({
     ...db,
     branches: branches.length ? branches : (db?.branches || []),
@@ -981,19 +981,22 @@ const ReportsWorkspace = ({ db, currentCompany, isEnabled = () => true, branches
 
   const Icon = bucket.icon || FileSpreadsheet;
   return (
-    <div className="space-y-3">
+    <div className="space-y-0">
       <div
-        className="sticky top-0 z-50 grid grid-cols-1 items-center gap-3 border-b py-2.5 ui-border-c sm:grid-cols-[1fr_minmax(16rem,24rem)_1fr]"
+        className="reports-page-bar sticky top-0 z-50 grid grid-cols-1 items-center gap-3 border-b py-2.5 ui-border-c sm:grid-cols-[1fr_minmax(16rem,24rem)_1fr]"
         style={{ backgroundColor: 'rgb(var(--app-bg))', boxShadow: '0 8px 16px rgb(0 0 0 / 0.04)' }}
       >
-        <div className="flex items-center gap-2.5"><EntityMark entity="report" /><h1 className="ui-t-page">Reports</h1></div>
+        <div className="flex items-center gap-2.5">
+          {onExit ? <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onExit} aria-label="Back to application"><ArrowLeft size={15} aria-hidden="true" /> Back to app</button> : null}
+          <EntityMark entity="report" /><h1 className="ui-t-page">Reports</h1>
+        </div>
         <label className="relative block w-full">
           <Search size={17} className="absolute start-3 top-1/2 -translate-y-1/2 ui-subtle" aria-hidden="true" />
           <input className="ui-input w-full ps-10" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search all reports…" aria-label="Search all reports" />
         </label>
         <span aria-hidden="true" />
       </div>
-      <div className="flex min-h-[calc(100dvh-12rem)] overflow-hidden rounded-xl border ui-border-c bg-[rgb(var(--surface))]">
+      <div className="flex min-h-[calc(100dvh-12rem)] overflow-hidden border ui-border-c bg-[rgb(var(--surface))]">
         <ReportSidebar selectedKey={selectedKey} setSelectedKey={setSelectedKey} openGroups={openGroups} setOpenGroups={setOpenGroups} onOpenReport={openReport} isEnabled={isEnabled} />
         <main className="min-w-0 flex-1 p-5 lg:p-7">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b ui-border-c pb-4">
@@ -1025,8 +1028,7 @@ const ReportSidebar = ({ selectedKey, setSelectedKey, openGroups, setOpenGroups,
     return next;
   });
   return (
-    <aside className="hidden w-64 flex-none border-e ui-border-c bg-[rgb(var(--surface-sunken))] p-3 sm:block" aria-label="Report categories">
-      <div className="ui-section-label px-2">Reports</div>
+    <aside className="settings-catalog ui-rail hidden w-[15rem] flex-none overflow-y-auto sm:block" aria-label="Report categories">
       <nav className="space-y-1">
         {NAV_GROUPS.map((group) => {
           const keys = (group.keys || []).filter((key) => !BUCKETS[key]?.feature || isEnabled(BUCKETS[key].feature));
@@ -1035,17 +1037,17 @@ const ReportSidebar = ({ selectedKey, setSelectedKey, openGroups, setOpenGroups,
           const open = openGroups.has(group.title);
           return (
             <div key={group.title}>
-              <button type="button" onClick={() => toggle(group.title)} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm font-semibold hover:bg-[rgb(var(--heading-bg))]">
+              <button type="button" onClick={() => toggle(group.title)} className="ui-nav-item" data-level="module" data-tone="reports">
                 {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}<span>{group.title}</span>
               </button>
               {open ? (
-                <div className="ms-3 border-s ui-border-c ps-2">
+                <div className="mt-0.5 space-y-0.5 pl-5">
                   {keys.map((key) => {
                     const item = BUCKETS[key];
-                    return <button key={key} type="button" data-active={selectedKey === key ? 'true' : undefined} onClick={() => setSelectedKey(key)} className="ui-nav-item my-0.5 w-full justify-start px-2 py-1.5 text-[0.8125rem]">{item.title}</button>;
+                    return <button key={key} type="button" data-active={selectedKey === key ? 'true' : undefined} data-tone="reports" onClick={() => setSelectedKey(key)} className="ui-nav-item">{item.title}</button>;
                   })}
                   {direct.map((item) => (
-                    <button key={item.name} type="button" onClick={() => onOpenReport?.({ ...item, bucketKey: group.bucket || '', category: group.title, source: group.title === 'Financial Statements' ? 'ledgers' : 'cashBank' })} className="ui-nav-item my-0.5 w-full justify-start px-2 py-1.5 text-[0.8125rem]">{item.name}</button>
+                    <button key={item.name} type="button" data-tone="reports" onClick={() => onOpenReport?.({ ...item, bucketKey: group.bucket || '', category: group.title, source: group.title === 'Financial Statements' ? 'ledgers' : 'cashBank' })} className="ui-nav-item">{item.name}</button>
                   ))}
                 </div>
               ) : null}

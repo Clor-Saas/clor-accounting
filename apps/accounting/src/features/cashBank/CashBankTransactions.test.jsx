@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -86,11 +86,9 @@ describe('the three types, and only three', () => {
 
 describe('the account filter', () => {
   it('filters the rows without a totals band', async () => {
-    const user = userEvent.setup();
     view();
     expect(screen.queryByRole('region', { name: 'Summary' })).toBeNull();
-    await user.click(screen.getByRole('combobox', { name: 'Account' }));
-    await user.click(screen.getByRole('option', { name: 'Petty Cash' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Account' }), { target: { value: '12' } });
 
     /* The cash account saw one receipt and one leg of the transfer. */
     expect(screen.queryByText('ABC Traders')).toBeNull();

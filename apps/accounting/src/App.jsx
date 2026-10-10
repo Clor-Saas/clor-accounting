@@ -7,8 +7,11 @@ import { postJournalToLedger, reverseJournalOnLedger } from '@ui/utils/journalSy
 import { createDocApi, deleteDocApi, updateDocApi, hasApiSession as hasDocsApiSession } from '@ui/api/purchaseDocs';
 import { useServerDocSync } from '@ui/hooks/useServerDocSync';
 import useTdsSync from './features/tds/useTdsSync';
+import { reconcileExpenseTdsTransactions } from './features/tds/expenseReconciliation';
 import { useCompanyFromServer } from '@ui/hooks/useCompanyFromServer';
 import { buildGstr1Json, buildGstr3bJson, downloadJson } from '@ui/utils/gstrExport';
+import { exportGstr1Excel } from '@ui/utils/gstr1Excel';
+import { exportListXlsx } from '@ui/utils/listXlsx';
 import Toaster from '@ui/components/ui/Toaster';
 import ResizableTables from '@ui/components/ResizableTables';
 import StockTransferModule, { StockTransferEditor } from './features/inventory/StockTransferModule';
@@ -41,12 +44,13 @@ import VendorPicker, { VendorForm } from './components/pickers/VendorPicker';
 import { CustomerForm } from './components/pickers/CustomerPicker';
 import { buildLedgerStatement, getDefaultDocSettings, initEmptyDB, normalizeDB } from './data/db';
 import { nextFreeVoucherNumber } from '@ui/utils/docSettings';
+import { INVOICE_PRINT_GROUPS, getInvoicePrintSettings } from '@ui/utils/invoicePrintSettings';
 import { dueDateFor } from '@ui/utils/paymentTerms';
 import { exportLedgerToExcel, exportLedgerToPdf, printLedger } from '@ui/utils/ledgerExport';
 import { formatMoney, round2 } from '@ui/utils/money';
 import { downloadCsvTemplate, parseCsv, readFileText } from '@ui/utils/csv';
 import { useColumnFilters, ColumnHeader } from '@ui/components/ColumnFilters';
-import { ListToolbar, useListSearch } from '@ui/components/ListToolbar';
+import { ListToolbar, exportRows, useListSearch } from '@ui/components/ListToolbar';
 import { getVendorDisplayName } from '@ui/utils/contacts';
 import {
   ACCENT_OPTIONS,
@@ -192,7 +196,9 @@ import { PermissionButton } from '@ui/permissions/ActionGuard';
 import RolePermissionManager from './features/admin/RolePermissionManager';
 import SettingsHub from './features/settings/SettingsHub';
 import SettingsWorkspace from './features/settings/SettingsWorkspace';
-import { isSettingsKey, isSettingsRoute, visibleSettings, SETTINGS_KEYS } from './features/settings/settingsRegistry';
+import MasterDataWorkspace, { MASTER_DATA_KEYS } from './features/masters/MasterDataWorkspace';
+import { TcsRatesMaster } from './features/masters/TaxRateMaster';
+import { isSettingsKey, isSettingsRoute, settingsBackTarget, visibleSettings, SETTINGS_KEYS } from './features/settings/settingsRegistry';
 import FeaturesPage from './features/features/FeaturesPage';
 import FeaturesPanel from './features/features/FeaturesPanel';
 import { featuresPresentationFor } from './features/features/featuresPresentation';
@@ -201,7 +207,7 @@ import ModulePicker from './features/settings/ModulePicker';
 import { AddressTab, ContactsTab, CURRENCY_OPTIONS, FormRow as PartyFormRow } from './components/pickers/customerFormParts';
 import { TDS_SECTIONS, tdsSection } from '@ui/utils/tds';
 import { TDS_NATURES, natureByCode, natureForSection, resolveRule, ruleReference } from './features/tds/ruleMaster';
-import { tdsEventFrom } from './features/tds/engine';
+import { tdsEventFrom, tdsReversalEventFrom } from './features/tds/engine';
 import { tdsGroupSide, tdsLedgerRate, tdsPayableLedgers } from '@ui/utils/tdsLedgers';
 import { formatDateIn, localDateIso, todayIso } from '@ui/utils/dates';
 import {
@@ -229,6 +235,7 @@ import EmailSettings from './features/settings/EmailSettings';
 import SecuritySettings from './features/settings/SecuritySettings';
 import ProfileSettings from './features/settings/ProfileSettings';
 import CompanyProfileDetails from './features/settings/CompanyProfileDetails';
+import CompanyProfileForm from './features/settings/CompanyProfileForm';
 import NumberingSettings from './features/settings/NumberingSettings';
 import CurrencySettings from './features/settings/CurrencySettings';
 const BatchSerialManager = lazy(() => import('./features/inventory/BatchSerialManager'));
@@ -300,7 +307,7 @@ import { useTheme } from '@ui/components/ui/useTheme';
 import { useDensity } from '@ui/components/ui/useDensity';
 import { useFieldErrors } from '@ui/components/ui/useFieldErrors';
 import { exportFormatFromKey, exportMenuItem, runListExport } from '@ui/components/list/exportMenu';
-import { onPlatformContextChange, orgId as platformOrgId } from '@platform/context';
+import { orgId as platformOrgId } from '@platform/context';
 import { registerLedgerForm } from './components/pickers/ledgerFormRegistry';
 import { useDismissable } from '@ui/components/ui/useDismissable';
 import ReportsWorkspace from './features/reports/ReportsWorkspace';
@@ -317,20 +324,21 @@ const getBranchLabel = (b) => {
 /**
  * The org id the SERVER knows this company by.
  *
- * `currentCompany.id` is a local numeric id (1, 2, 3...) from the client
- * store. Falling back to it meant calling `/api/orgs/1/warehouses`, which the
- * server rejects as an orgId mismatch — the warehouse list then failed on
- * every load. The session's activeOrgId is the right fallback; when neither is
- * known there is no server org to ask about, so callers should skip the fetch.
+ * The session's `activeOrgId` is also sent by apiFetch as `x-org-id`, so the
+ * route parameter must come from that same source. A locally cached company
+ * can briefly belong to the previously selected organisation while the new
+ * company is hydrating; preferring its backend id makes the URL and header
+ * disagree and the server correctly rejects the request as an org mismatch.
+ * The company profile remains a cold-start fallback only.
  */
 const resolveServerOrgId = (company) => {
-  const backend = String(company?.profile?.backendCompanyId || '').trim();
-  if (backend) return backend;
   try {
-    return String(platformOrgId() || '').trim();
+    const active = String(localStorage.getItem('activeOrgId') || '').trim();
+    if (active) return active;
   } catch {
-    return '';
+    // Continue to the persisted company fallback below.
   }
+  return String(company?.profile?.backendCompanyId || '').trim();
 };
 
 
@@ -342,6 +350,7 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [expenseActionMenu, setExpenseActionMenu] = useState(null);
+  const [expenseStatus, setExpenseStatus] = useState('All');
   const [fromDate] = useState('');
   const [toDate] = useState('');
   const importInputRef = useRef(null);
@@ -368,7 +377,7 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
     return 'Unpaid';
   };
 
-  const filteredExpenses = expenseColFilters.applyFilters(
+  const expensesBeforeStatus = expenseColFilters.applyFilters(
     expenseSearch.filtered
       .slice()
       .sort((a, b) => {
@@ -388,6 +397,19 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
       status: (r) => getDerivedStatus(r),
     }
   );
+
+  const expenseStatusCounts = expensesBeforeStatus.reduce(
+    (counts, expense) => {
+      const status = getDerivedStatus(expense);
+      counts.All += 1;
+      counts[status] = (counts[status] || 0) + 1;
+      return counts;
+    },
+    { All: 0, Draft: 0, Unpaid: 0, Partial: 0, Paid: 0, 'Over due': 0 }
+  );
+  const filteredExpenses = expenseStatus === 'All'
+    ? expensesBeforeStatus
+    : expensesBeforeStatus.filter((expense) => getDerivedStatus(expense) === expenseStatus);
 
 
   const ledgerNamesOf = (e) =>
@@ -658,7 +680,38 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
         return;
       }
     }
-    setDb((prev) => ({ ...prev, expenses: (prev.expenses || []).filter((row) => String(row.id) !== String(expense.id)) }));
+    setDb((prev) => {
+      const events = Array.isArray(prev.tdsTransactions) ? prev.tdsTransactions : [];
+      const mine = events.filter(
+        (event) =>
+          Number(event?.companyId) === Number(currentCompany.id) &&
+          String(event?.sourceType) === 'expense' &&
+          String(event?.sourceId) === String(expense.id) &&
+          String(event?.status).toLowerCase() === 'posted' &&
+          !event?.reversalOfId
+      );
+      let nextEventId = events.reduce((max, event) => Math.max(max, Number(event?.id) || 0), 0);
+      const stamp = new Date().toISOString();
+      const reversals = mine.map((event) => ({
+        ...tdsReversalEventFrom(event, { reason: `Expense ${expense?.number || expense.id} deleted` }),
+        id: ++nextEventId,
+      }));
+      const nextEvents = mine.length
+        ? [
+            ...events.map((event) =>
+              mine.some((row) => row.id === event.id)
+                ? { ...event, status: 'Reversed', modifiedBy: reversals[0]?.createdBy || 'User', modifiedAt: stamp }
+                : event
+            ),
+            ...reversals,
+          ]
+        : events;
+      return {
+        ...prev,
+        tdsTransactions: nextEvents,
+        expenses: (prev.expenses || []).filter((row) => String(row.id) !== String(expense.id)),
+      };
+    });
     notify.success('Expense deleted.');
   };
 
@@ -673,14 +726,15 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
 
   if (isCreating) {
     return (
-      <div className="space-y-6">
-        <div className="ui-surface rounded-xl shadow-sm border p-6">
+      <div className="space-y-3">
+        <div className="ui-surface rounded-xl shadow-sm border p-3">
           <ExpenseForm
+            key={editingExpense?.id ? `expense-${editingExpense.id}` : 'expense-new'}
             db={db}
             setDb={setDb}
             currentCompany={currentCompany}
             openModal={openModal}
-            screenTitle="New Expense"
+            screenTitle={editingExpense ? `Edit Expense ${editingExpense.number || ''}`.trim() : 'New Expense'}
             initialData={editingExpense}
             onBack={() => { setEditingExpense(null); setIsCreating(false); }}
             onClose={() => { setEditingExpense(null); setIsCreating(false); }}
@@ -719,6 +773,18 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
       title="Expenses"
       company={currentCompany}
       search={{
+        before: (
+          <select
+            value={expenseStatus}
+            onChange={(event) => setExpenseStatus(event.target.value)}
+            className="ui-select ui-ctl-compact w-36"
+            aria-label="Expense status"
+          >
+            {EXPENSE_STATUS_TABS.map((item) => (
+              <option key={item.value} value={item.value}>{item.label} ({expenseStatusCounts[item.value] || 0})</option>
+            ))}
+          </select>
+        ),
         value: expenseSearch.query,
         onChange: expenseSearch.setQuery,
         placeholder: 'Search expenses…',
@@ -738,7 +804,7 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
       primary={
         <PermissionButton
           permission="EXPENSES::Expenses::CREATE"
-          onClick={() => setIsCreating(true)}
+          onClick={() => { setEditingExpense(null); setIsCreating(true); }}
           className="ui-btn ui-btn-primary"
         >
           <Plus size={16} aria-hidden="true" /> New Expense
@@ -754,6 +820,7 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
            screen for. */
         { label: 'Overdue', value: expenseFlow.overdue, tone: 'overdue', Icon: AlertTriangle },
       ]}
+      denseCards
       above={
         <input
           ref={importInputRef}
@@ -768,7 +835,7 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
         />
       }
     >
-      <div className="ui-table-scroll">
+      <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}>
         <table className="ui-table ui-table-wide ui-table-sticky table-fixed">
           <colgroup>
             <col style={{ width: '13%' }} />
@@ -779,7 +846,7 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
             <col style={{ width: '9%' }} />
             <col style={{ width: '12%' }} />
             <col style={{ width: '7%' }} />
-            <col style={{ width: '3%' }} />
+            <col style={{ width: '44px' }} />
           </colgroup>
           <thead>
             <tr>
@@ -790,8 +857,8 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
               <ColumnHeader label="GST" col="gst" state={expenseColFilters} type="number" className="ui-num text-sm font-semibold" align="right" />
               <ColumnHeader label="TDS" col="tds" state={expenseColFilters} type="number" className="ui-num text-sm font-semibold" align="right" />
               <ColumnHeader label="Payable Amount" col="payable" state={expenseColFilters} type="number" className="ui-num text-sm font-semibold" align="right" />
-              <ColumnHeader label="Status" col="status" state={expenseColFilters} type="choice" className="text-sm font-semibold" align="center" />
-              <th scope="col" className="text-sm font-semibold text-center">Action</th>
+              <ColumnHeader label="Status" col="status" state={expenseColFilters} type="choice" className="text-sm font-semibold" />
+              <th scope="col" className="ui-action-col"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody className="ui-rows">
@@ -819,7 +886,7 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
                       expenses.length ? null : (
                         <PermissionButton
                           permission="EXPENSES::Expenses::CREATE"
-                          onClick={() => setIsCreating(true)}
+                          onClick={() => { setEditingExpense(null); setIsCreating(true); }}
                           className="ui-btn ui-btn-primary"
                         >
                           <Plus size={16} /> New Expense
@@ -842,20 +909,20 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
                       openVoucher(expense);
                     }}
                   >
-                  <td className="px-4 py-2.5 ui-col-entity">{expense.number || '-'}</td>
-                  <td className="px-4 py-2.5 ui-col-meta">{expense.date}</td>
-                  <td className="px-4 py-2.5 ui-col-entity">{expense.vendorName || '-'}</td>
-                  <td className="px-4 py-2.5 ui-col-amount">{formatMoney(expense.total, currentCompany)}</td>
-                  <td className="px-4 py-2.5 ui-col-amount">{formatMoney(expense.gstTotal || 0, currentCompany)}</td>
-                  <td className="px-4 py-2.5 ui-col-amount">{formatMoney(expense.tdsAmount || 0, currentCompany)}</td>
-                  <td className="px-4 py-2.5 ui-col-amount">{formatMoney(expensePayable, currentCompany)}</td>
-                  <td className="px-4 py-2.5 ui-col-meta">
+                  <td className="px-3 py-2 ui-col-entity">{expense.number || '-'}</td>
+                  <td className="px-3 py-2 ui-col-meta">{expense.date}</td>
+                  <td className="px-3 py-2 ui-col-entity">{expense.vendorName || '-'}</td>
+                  <td className="px-3 py-2 ui-col-amount">{formatMoney(expense.total, currentCompany)}</td>
+                  <td className="px-3 py-2 ui-col-amount">{formatMoney(expense.gstTotal || 0, currentCompany)}</td>
+                  <td className="px-3 py-2 ui-col-amount">{formatMoney(expense.tdsAmount || 0, currentCompany)}</td>
+                  <td className="px-3 py-2 ui-col-amount">{formatMoney(expensePayable, currentCompany)}</td>
+                  <td className="px-3 py-2 ui-col-meta whitespace-nowrap">
                     <StatusPill status={derived} />
                   </td>
-                  <td className="px-2 py-2.5 ui-col-meta text-center" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
+                  <td className="ui-action-col text-center" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
                     <button
                       type="button"
-                      className="p-2 rounded-lg ui-hover-sunken inline-flex"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md ui-hover-sunken"
                       aria-label="Expense actions"
                       onClick={(event) => {
                         event.stopPropagation();
@@ -899,10 +966,25 @@ export const ExpensesList = ({ db, setDb, openModal, currentCompany }) => {
 
 const emptyExpenseLine = () => ({ ledgerId: '', description: '', amount: '', gstRate: 0 });
 
+/** Only expense ledgers explicitly marked TDS-applicable form the deduction base. */
+export const expenseTdsBase = (lines = [], ledgers = []) => {
+  const applicable = new Set(
+    (Array.isArray(ledgers) ? ledgers : [])
+      .filter((ledger) => ledger?.tdsApplicable === true)
+      .map((ledger) => String(ledger.id))
+  );
+  return round2(
+    (Array.isArray(lines) ? lines : []).reduce(
+      (sum, line) => sum + (applicable.has(String(line?.ledgerId || '')) ? Number(line?.amount || 0) : 0),
+      0
+    )
+  );
+};
+
 /** Sentinel value for the "create one" entry inside the ledger picker. */
 const NEW_LEDGER_OPTION = '__new_ledger__';
 
-const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialData = null, screenTitle = '', onBack = null }) => {
+export const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialData = null, screenTitle = '', onBack = null }) => {
   const expenseErrors = useFieldErrors('expense');
   const activeBranchId = normalizeId(localStorage.getItem('activeBranchId') || localStorage.getItem('branchId') || '');
   const expenseDocSettings = getDocSettings(db, currentCompany, { branchId: activeBranchId || null });
@@ -922,6 +1004,39 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
 
   const formRef = useRef(null);
   const [submitAsDraft, setSubmitAsDraft] = useState(false);
+  const [tdsPickerOpen, setTdsPickerOpen] = useState(() => Boolean(initialData?.tdsLedgerId || Number(initialData?.tdsAmount) > 0));
+
+  const initialExpenseVendorId = (() => {
+    if (initialData?.vendorId !== undefined && initialData?.vendorId !== null && initialData?.vendorId !== '') {
+      return initialData.vendorId;
+    }
+    const partyId = String(initialData?.partyId || '').trim();
+    const vendorName = String(initialData?.vendorName || '').trim().toLowerCase();
+    const match = (db.vendors || []).find((row) =>
+      row.companyId === currentCompany.id && (
+        (partyId && String(row.backendPartyId || '') === partyId) ||
+        (vendorName && getVendorDisplayName(row).trim().toLowerCase() === vendorName)
+      )
+    );
+    return match?.id ?? '';
+  })();
+
+  const initialExpenseLines = (() => {
+    if (Array.isArray(initialData?.lines) && initialData.lines.length) return initialData.lines;
+    if (!Array.isArray(initialData?.items) || !initialData.items.length) return [emptyExpenseLine()];
+    const accounts = (db.chartOfAccounts || []).filter((row) => row.companyId === currentCompany.id);
+    return initialData.items.map((item) => {
+      const fullDescription = String(item?.description || '');
+      const [ledgerLabel, ...detailParts] = fullDescription.split(' — ');
+      const ledger = accounts.find((row) => String(row.name || '').trim().toLowerCase() === ledgerLabel.trim().toLowerCase());
+      return {
+        ledgerId: ledger?.id ?? '',
+        description: detailParts.join(' — '),
+        amount: item?.taxableAmount ?? item?.rate ?? '',
+        gstRate: Number(item?.gstRate || 0),
+      };
+    });
+  })();
 
   /*
    * Named, not inline: a ref read inside a prop passed to a component reads to
@@ -942,12 +1057,12 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
     dueDate: initialData?.dueDate || initialData?.date || new Date().toISOString().split('T')[0],
     dueDateTouched: Boolean(initialData?.dueDate),
     description: initialData?.description || '',
-    vendorId: initialData?.vendorId ?? '',
+    vendorId: initialExpenseVendorId,
     refNo: initialData?.refNo || '',
     refDate: initialData?.refDate || '',
     tdsRate: initialData?.tdsRate ?? '',
     tdsLedgerId: initialData?.tdsLedgerId ?? '',
-    lines: Array.isArray(initialData?.lines) && initialData.lines.length ? initialData.lines : [emptyExpenseLine()],
+    lines: initialExpenseLines,
   }));
 
   const vendors = db.vendors.filter((v) => v.companyId === currentCompany.id);
@@ -975,7 +1090,7 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
   }, [db.chartOfAccounts, db.accountGroups, currentCompany.id]);
 
   const { state: companyState } = getCompanyGstProfile(currentCompany);
-  const gstEnabled = (currentCompany?.profile?.taxCompliances?.gstEnabled ?? currentCompany?.gstEnabled ?? true) !== false;
+  const gstEnabled = Boolean(currentCompany?.profile?.taxCompliances?.gstEnabled ?? currentCompany?.gstEnabled ?? currentCompany?.gstin);
   const vendor = formData.vendorId ? vendors.find((v) => v.id === parseInt(formData.vendorId)) : null;
 
   // The due date follows the entry date plus whatever credit the vendor has on
@@ -1021,7 +1136,11 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
     };
   }, [formData.lines, vendorChargesGst, isIntra]);
   const tdsRate = Math.max(0, Math.min(100, Number(formData.tdsRate) || 0));
-  const tdsAmount = round2((computed.subtotal * tdsRate) / 100);
+  const tdsBaseAmount = expenseTdsBase(computed.rows, expenseLedgers);
+  const tdsApplicableLineCount = computed.rows.filter((line) =>
+    expenseLedgers.some((ledger) => String(ledger.id) === String(line.ledgerId) && ledger.tdsApplicable === true)
+  ).length;
+  const tdsAmount = round2((tdsBaseAmount * tdsRate) / 100);
   const netPayable = round2(Math.max(0, computed.total - tdsAmount));
 
   const updateLine = (idx, patch) =>
@@ -1050,7 +1169,7 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
     if (wantsDraft) setSubmitAsDraft(false);
 
     let expenseNumber = String(formData.number || '').trim();
-    if (isExpenseAuto) {
+    if (isExpenseAuto && !initialData?.id) {
       if (lockExpenseNumber) expenseNumber = String(generatedExpenseNumber || '').trim();
       else if (!expenseNumber) expenseNumber = String(generatedExpenseNumber || '').trim();
     }
@@ -1095,7 +1214,7 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
 
     // Server first: an unpaid expense is a liability; it must reach the books
     // or not exist. Drafts stay local until they become real.
-    let backendDocId = null;
+    let backendDocId = initialData?.backendDocId || null;
     let serverNumber = '';
     if (!wantsDraft && hasDocsApiSession()) {
       try {
@@ -1117,6 +1236,7 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
           gstTotal: computed.gstTotal,
           total: computed.total,
           tdsAmount,
+          tdsBaseAmount,
           tdsLedgerId: formData.tdsLedgerId || null,
           tdsLedgerName: expenseTdsLedgers.find((ledger) => String(ledger.id) === String(formData.tdsLedgerId))?.name || null,
           status: 'Unpaid',
@@ -1133,7 +1253,7 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
         const saved = initialData?.backendDocId
           ? await updateDocApi('expense', initialData.backendDocId, payload)
           : await createDocApi('expense', payload);
-        backendDocId = saved?.id || null;
+        backendDocId = saved?.id || backendDocId;
         serverNumber = String(saved?.number || '');
       } catch (err) {
         notify.error(String(err?.message || 'Expense not saved to the server.'));
@@ -1167,25 +1287,83 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
       total: computed.total,
       tdsRate,
       tdsAmount,
+      tdsBaseAmount,
       tdsLedgerId: formData.tdsLedgerId || undefined,
       tdsLedgerName: tdsPayableLedgers(db, currentCompany.id).find((ledger) => String(ledger.id) === String(formData.tdsLedgerId))?.name || undefined,
       netPayable,
       amount: computed.subtotal,
-      paidAmount: 0,
-      status: wantsDraft ? 'Draft' : 'Unpaid',
+      paidAmount: Number(initialData?.paidAmount || 0),
+      status: wantsDraft ? 'Draft' : (initialData?.status && initialData.status !== 'Draft' ? initialData.status : 'Unpaid'),
       // Where this was entered from, so the header's scope can find it later.
       branchId: activeBranchId || '',
       warehouseId: String(localStorage.getItem('activeWarehouseId') || '').trim(),
-      createdAt: new Date().toISOString(),
+      createdAt: initialData?.createdAt || new Date().toISOString(),
     };
 
     const nextExpenses = initialData?.id
       ? db.expenses.map((expense) => String(expense.id) === String(initialData.id) ? newExpense : expense)
       : [...db.expenses, newExpense];
+    const tdsEvents = Array.isArray(db.tdsTransactions) ? db.tdsTransactions : [];
+    const existingTdsEvent = initialData?.id
+      ? tdsEvents.find(
+          (event) =>
+            Number(event?.companyId) === Number(currentCompany.id) &&
+            String(event?.sourceType) === 'expense' &&
+            String(event?.sourceId) === String(initialData.id) &&
+            String(event?.status).toLowerCase() === 'posted' &&
+            !event?.reversalOfId
+        )
+      : null;
+    const remainingTdsEvents = existingTdsEvent
+      ? tdsEvents.filter((event) => event !== existingTdsEvent)
+      : tdsEvents;
+    const selectedTdsLedger = expenseTdsLedgers.find(
+      (ledger) => String(ledger.id) === String(formData.tdsLedgerId || '')
+    );
+    const natureCode = String(selectedTdsLedger?.tdsNatureCode || '').trim()
+      || natureForSection(selectedTdsLedger?.tdsSection)?.code
+      || '';
+    const rule = natureCode ? resolveRule(natureCode, formData.date) : null;
+    const nextTdsEvent = !wantsDraft && tdsAmount > 0.005 && selectedTdsLedger && natureCode
+      ? {
+          id: existingTdsEvent?.id
+            ?? (tdsEvents.reduce((max, event) => Math.max(max, Number(event?.id) || 0), 0) + 1),
+          ...tdsEventFrom(
+            {
+              natureCode,
+              ruleVersionId: rule?.id || '',
+              statutoryReference: ruleReference(rule),
+              sectionCode: rule?.sectionCode || selectedTdsLedger?.tdsSection || '',
+              baseAmount: tdsBaseAmount,
+              rate: tdsRate,
+              tdsAmount,
+              ledgerId: String(selectedTdsLedger.id),
+              side: 'PAYABLE',
+            },
+            {
+              company: currentCompany,
+              party: vendor,
+              source: { type: 'expense', id: newExpense.id, number: newExpense.number },
+              branchId: activeBranchId || '',
+              date: formData.date,
+            }
+          ),
+          ...(existingTdsEvent
+            ? {
+                createdAt: existingTdsEvent.createdAt,
+                createdBy: existingTdsEvent.createdBy,
+                modifiedAt: new Date().toISOString(),
+              }
+            : {}),
+        }
+      : null;
     setDb({
       ...db,
       expenses: nextExpenses,
-      companies: bumpCompanyNextNumber({ db, companyId: currentCompany.id, voucherKey: 'expense', usedNumber: expenseNumber, branchId: activeBranchId || null }),
+      tdsTransactions: nextTdsEvent ? [...remainingTdsEvents, nextTdsEvent] : remainingTdsEvents,
+      companies: initialData?.id
+        ? db.companies
+        : bumpCompanyNextNumber({ db, companyId: currentCompany.id, voucherKey: 'expense', usedNumber: expenseNumber, branchId: activeBranchId || null }),
     });
     onClose?.();
     notify.success(initialData?.id ? 'Expense updated!' : 'Expense created!');
@@ -1204,12 +1382,12 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
   });
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} noValidate className="space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} noValidate className="ui-creation-form space-y-3">
       <DocFormActions
         title={screenTitle}
         onBack={onBack}
         sticky={Boolean(screenTitle)}
-        primaryLabel="Submit Expense"
+        primaryLabel={initialData ? 'Update Expense' : 'Submit Expense'}
         secondaryLabel="Save Draft"
         onSecondary={submitExpenseAsDraft}
       />
@@ -1422,6 +1600,7 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
                         placeholder="Type an expense ledger"
                         ariaLabel={`Expense ledger, line ${idx + 1}`}
                         openModal={openModal}
+                        creationGroupCategory="Expense"
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -1535,10 +1714,24 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
             <span>Total Expense:</span>
             <span className="ui-money">{formatMoney(computed.total, currentCompany)}</span>
           </div>
-          <div className="flex items-center justify-between gap-4 border-t pt-2">
-            <label className="ui-label mb-0" htmlFor="expense-tds-rate">Less: TDS</label>
-            <span className="flex flex-wrap items-center justify-end gap-2">
+          {!tdsPickerOpen && !formData.tdsLedgerId ? (
+            <div className="ms-auto mt-2 w-full border-t ui-border-c pt-2">
+              <button
+                type="button"
+                onClick={() => setTdsPickerOpen(true)}
+                className="ui-btn ui-btn-ghost ui-btn-sm w-full justify-start !px-0 text-sm"
+              >
+                + TDS deduction <span className="ui-subtle">(if you deduct on this bill)</span>
+              </button>
+            </div>
+          ) : null}
+
+          <div className="ms-auto mt-2 w-full border-t ui-border-c pt-2" hidden={!tdsPickerOpen && !(tdsAmount > 0)}>
+            <div className="grid min-w-0 grid-cols-[minmax(8rem,1fr)_4.5rem_minmax(6.5rem,7.5rem)] items-end gap-2">
+              <div className="min-w-0">
+                <label className="ui-label" htmlFor="expense-tds-ledger">TDS</label>
               <select
+                id="expense-tds-ledger"
                 value={formData.tdsLedgerId}
                 onChange={(e) => {
                   const ledgerId = e.target.value;
@@ -1548,17 +1741,21 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
                     tdsLedgerId: ledgerId,
                     tdsRate: ledger ? String(tdsLedgerRate(ledger, vendor?.tdsDeducteeType || 'COMPANY')) : '',
                   }));
+                  if (!ledgerId) setTdsPickerOpen(false);
                 }}
-                className="ui-select min-w-56 px-2 py-1"
+                className="ui-select w-full"
                 aria-label="TDS payable ledger"
               >
-                <option value="">Select TDS ledger</option>
+                <option value="">No deduction</option>
                 {expenseTdsLedgers.map((ledger) => (
                   <option key={ledger.id} value={ledger.id}>
                     {ledger.name}
                   </option>
                 ))}
               </select>
+              </div>
+              <div>
+              <label className="ui-label" htmlFor="expense-tds-rate">%</label>
               <input
                 id="expense-tds-rate"
                 type="number"
@@ -1567,18 +1764,28 @@ const ExpenseForm = ({ db, setDb, currentCompany, openModal, onClose, initialDat
                 step="0.01"
                 value={formData.tdsRate}
                 onChange={(e) => setFormData((prev) => ({ ...prev, tdsRate: e.target.value }))}
-                className="ui-input ui-money w-20 px-2 py-1 text-right"
+                className="ui-input ui-mono w-full"
                 aria-label="TDS percentage"
                 disabled={!formData.tdsLedgerId}
               />
-              <span className="ui-muted text-sm">%</span>
-              <span className="ui-money w-28 text-right">− {formatMoney(tdsAmount, currentCompany)}</span>
-            </span>
+              </div>
+              <div>
+                <span className="ui-label block">Amount</span>
+                <output className="ui-input ui-sunken ui-money flex items-center justify-end" aria-label="TDS amount">
+                  {formatMoney(tdsAmount, currentCompany)}
+                </output>
+              </div>
+            </div>
+            {formData.tdsLedgerId ? (
+              <p className="ui-caption mt-1.5">
+                TDS base: {formatMoney(tdsBaseAmount, currentCompany)} from {tdsApplicableLineCount} applicable expense {tdsApplicableLineCount === 1 ? 'line' : 'lines'}.
+              </p>
+            ) : null}
           </div>
-          <div className="ui-total-row border-t pt-2">
+          {tdsAmount > 0 ? <div className="ui-total-row border-t pt-2">
             <span>Net Payable:</span>
             <span className="ui-money">{formatMoney(netPayable, currentCompany)}</span>
-          </div>
+          </div> : null}
         </div>
       </div>
 
@@ -1733,6 +1940,8 @@ const ItemsList = ({ db, setDb, currentCompany, warehouses = [], branches = [], 
     <DocumentListShell
       entity="items"
       title="Items"
+      compact
+      tight
       company={currentCompany}
       search={{
         value: itemSearch.query,
@@ -1767,17 +1976,14 @@ const ItemsList = ({ db, setDb, currentCompany, warehouses = [], branches = [], 
       ]}
       tabs={ITEM_TABS}
       tabsLabel="Item filter"
+      statusInHeader
       statusValue={itemFilter}
       statusCounts={itemStatusCounts}
       onStatusChange={setItemFilter}
-      tip={{
-        storageKey: 'neev.tip.items',
-        Icon: Package,
-        text: 'An item without an HSN or SAC can still be sold — and the GST return that carries it is the one that comes back.',
-      }}
+      denseCards
     >
-      <div className="ui-table-scroll">
-        <table className="ui-table ui-table-wide ui-table-sticky">
+      <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 11.5rem)' }}>
+        <table className={`ui-table ui-table-wide ui-table-sticky ${visibleItems.length ? '' : 'cash-bank-empty-table'}`}>
           <thead>
             <tr>
               <ColumnHeader label="Code" col="code" state={itemSearchFilters} />
@@ -1911,8 +2117,13 @@ const InventoryOverview = ({ db, currentCompany }) => {
 };
 
 const ChartOfAccounts = ({ db, setDb, openModal, currentCompany, onOpenLedger = null }) => {
+  const companyAccountGroups = (Array.isArray(db.accountGroups) ? db.accountGroups : []).filter(
+    (group) => group.companyId === currentCompany.id
+  );
   const accounts = db.chartOfAccounts.filter(
-    (a) => a.companyId === currentCompany.id && !a.hiddenFromChart
+    (account) =>
+      account.companyId === currentCompany.id &&
+      (!account.hiddenFromChart || Boolean(tdsGroupSide(companyAccountGroups, account.groupId)))
   );
   const [coaView, setCoaView] = useState('ledgers');
   /*
@@ -1926,6 +2137,8 @@ const ChartOfAccounts = ({ db, setDb, openModal, currentCompany, onOpenLedger = 
   const [openMenu, setOpenMenu] = useState(null);
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [groupLedgerSearch, setGroupLedgerSearch] = useState('');
   const menuRef = useRef(null);
   const coaImportInputRef = useRef(null);
 
@@ -2296,6 +2509,28 @@ const ChartOfAccounts = ({ db, setDb, openModal, currentCompany, onOpenLedger = 
     });
   }, [groupRows, groupSearch]);
 
+  const selectedGroup = groupRows.find((group) => String(group.id) === String(selectedGroupId)) || null;
+  const selectedGroupLedgerRows = useMemo(() => {
+    if (!selectedGroupId) return [];
+    const included = new Set([String(selectedGroupId)]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const group of accountGroups) {
+        if (included.has(String(group.parentGroupId || '')) && !included.has(String(group.id))) {
+          included.add(String(group.id));
+          changed = true;
+        }
+      }
+    }
+    const query = String(groupLedgerSearch || '').trim().toLowerCase();
+    return ledgerRows.filter((ledger) => {
+      if (!included.has(String(ledger.groupId || ''))) return false;
+      if (!query) return true;
+      return `${ledger.name || ''} ${ledger.code || ''} ${ledger._groupName || ''}`.toLowerCase().includes(query);
+    });
+  }, [selectedGroupId, groupLedgerSearch, accountGroups, ledgerRows]);
+
   const openNewLedger = () => {
     openModal(<LedgerCreateChooser onClose={() => openModal(null)} />, { title: 'Create', maxWidthClass: 'max-w-lg' });
   };
@@ -2479,6 +2714,105 @@ const ChartOfAccounts = ({ db, setDb, openModal, currentCompany, onOpenLedger = 
     );
   }
 
+  if (selectedGroup) {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              className="ui-btn ui-btn-secondary"
+              onClick={() => {
+                setOpenMenu(null);
+                setSelectedGroupId('');
+                setGroupLedgerSearch('');
+              }}
+            >
+              <ArrowLeft size={16} aria-hidden="true" /> Back
+            </button>
+            <div className="min-w-0">
+              <h1 className="ui-t-page">{selectedGroup.name}</h1>
+              <p className="ui-muted ui-t-body mt-1">
+                {selectedGroupLedgerRows.length} ledger{selectedGroupLedgerRows.length === 1 ? '' : 's'} under this group
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="relative">
+              <Search size={16} className="ui-muted pointer-events-none absolute start-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
+              <input
+                className="ui-input w-64 ps-9"
+                value={groupLedgerSearch}
+                onChange={(event) => setGroupLedgerSearch(event.target.value)}
+                placeholder="Search ledgers…"
+                aria-label="Search ledgers in group"
+              />
+            </div>
+            <button type="button" className="ui-btn ui-btn-primary" onClick={openNewLedger}>
+              <Plus size={16} aria-hidden="true" /> New Ledger
+            </button>
+          </div>
+        </div>
+
+        <div className="ui-card overflow-hidden">
+          <div className="ui-table-scroll">
+            <table className="ui-table ui-table-wide ui-table-sticky coa-table">
+              <thead>
+                <tr>
+                  <th scope="col">Ledger</th>
+                  <th scope="col">Code</th>
+                  <th scope="col">Group</th>
+                  <th scope="col" className="text-right">Opening Balance</th>
+                  <th scope="col" className="text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="ui-rows">
+                {selectedGroupLedgerRows.length ? selectedGroupLedgerRows.map((ledger) => (
+                  <tr key={ledger.id}>
+                    <td className="ui-col-entity">
+                      <button
+                        type="button"
+                        className="font-semibold text-left text-[rgb(var(--brand))] hover:underline"
+                        onClick={() => onOpenLedger?.(String(ledger.id))}
+                      >
+                        {ledger.name}
+                      </button>
+                      {ledger.active === false ? <span className="ui-chip ml-2">Inactive</span> : null}
+                    </td>
+                    <td className="ui-col-meta ui-mono">{ledger.code || '—'}</td>
+                    <td className="ui-col-meta ui-fg">{ledger._groupName || selectedGroup.name}</td>
+                    <td className="ui-col-amount text-right">{formatMoney(Number(ledger.openingBalance || 0), currentCompany)}</td>
+                    <td className="text-right">
+                      <button
+                        type="button"
+                        className="ui-icon-btn"
+                        aria-label={`Edit ${ledger.name}`}
+                        onClick={() => openEditLedger(ledger)}
+                      >
+                        <MoreVertical size={18} aria-hidden="true" />
+                      </button>
+                    </td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan="5">
+                      <EmptyState
+                        icon={BookOpen}
+                        kind="new"
+                        title={groupLedgerSearch ? 'No ledgers match' : 'No ledgers in this group'}
+                        description={groupLedgerSearch ? 'Try another ledger name or code.' : 'Create a ledger and assign it to this group.'}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <DocumentListShell
       entity="chartOfAccounts"
@@ -2523,6 +2857,7 @@ const ChartOfAccounts = ({ db, setDb, openModal, currentCompany, onOpenLedger = 
         { value: 'groups', label: 'Groups', tone: 'sent' },
       ]}
       tabsLabel="Chart of Accounts view"
+      statusInHeader
       statusValue={coaView}
       statusCounts={{ ledgers: ledgerRows.length, groups: groupRows.length }}
       onStatusChange={(value) => {
@@ -2550,7 +2885,7 @@ const ChartOfAccounts = ({ db, setDb, openModal, currentCompany, onOpenLedger = 
     >
       <div className="space-y-6">
         {coaView === 'ledgers' ? (
-          <div className="ui-table-scroll">
+          <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}>
             <table className="ui-table ui-table-wide ui-table-sticky coa-table">
               <colgroup>
                 <col style={{ width: '40%' }} />
@@ -2643,7 +2978,7 @@ const ChartOfAccounts = ({ db, setDb, openModal, currentCompany, onOpenLedger = 
             </table>
           </div>
         ) : (
-          <div className="ui-table-scroll">
+          <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}>
             <table className="ui-table ui-table-wide ui-table-sticky coa-table">
               <colgroup>
                 <col style={{ width: '48%' }} />
@@ -2689,7 +3024,19 @@ const ChartOfAccounts = ({ db, setDb, openModal, currentCompany, onOpenLedger = 
                     const buttonKey = `group:${String(g.id)}`;
                     return (
                       <tr key={g.id}>
-                        <td className="ui-col-entity">{g.name}</td>
+                        <td className="ui-col-entity">
+                          <button
+                            type="button"
+                            className="font-semibold text-left text-[rgb(var(--brand))] hover:underline"
+                            onClick={() => {
+                              setOpenMenu(null);
+                              setSelectedGroupId(String(g.id));
+                              setGroupLedgerSearch('');
+                            }}
+                          >
+                            {g.name}
+                          </button>
+                        </td>
                         <td className="ui-col-meta ui-fg">{g._parent || '-'}</td>
                         <td
                           className="text-right"
@@ -3013,6 +3360,7 @@ export const ChartAccountForm = ({
       ? String(initialData?.tdsNatureCode || natureForSection(initialData?.tdsSection)?.code || '')
       : '',
     tdsRate: isEdit ? String(initialData?.tdsRate ?? '') : '',
+    tdsApplicable: isEdit ? initialData?.tdsApplicable === true : false,
     /* Availability on transactions — an inactive ledger stays in the chart
        with its history, and out of every picker. */
     isActive: isEdit ? initialData?.isActive !== false : true,
@@ -3167,6 +3515,10 @@ export const ChartAccountForm = ({
 
   const handleSubmit = (e, mode = 'close') => {
     e.preventDefault();
+    // Quick-create is rendered in a portal owned by a document form. React
+    // events still bubble through that component tree, so without this the
+    // same click also submits and closes the expense/bill/journal underneath.
+    e.stopPropagation();
     if (saveAndNewRef.current) {
       saveAndNewRef.current = false;
       mode = 'new';
@@ -3250,6 +3602,7 @@ export const ChartAccountForm = ({
         ? String(tdsLedgerNature(groupById.get(String(formData.groupId || '').trim())) || '').toUpperCase()
         : undefined,
       tdsRate: String(formData.tdsRate ?? '').trim() === '' ? undefined : Number(formData.tdsRate),
+      tdsApplicable: isExpenseGroupSelected ? formData.tdsApplicable === true : undefined,
       isActive: formData.isActive !== false,
       addresses: (formData.addresses || []).filter((a) => String(a?.label || '').trim()),
       contacts: (formData.contacts || []).filter((c) => String(c?.name || '').trim()),
@@ -3364,6 +3717,7 @@ export const ChartAccountForm = ({
         tdsSection: '',
         tdsNatureCode: '',
         tdsRate: '',
+        tdsApplicable: false,
         addresses: [],
         contacts: [],
       }));
@@ -3482,6 +3836,25 @@ export const ChartAccountForm = ({
           ))}
         </select>
       </PartyFormRow>
+
+      {isExpenseGroupSelected ? (
+        <PartyFormRow
+          className="lg:col-start-2 lg:row-start-3"
+          label="TDS Applicable"
+          htmlFor="ledger-tds-applicable"
+          hint="Only applicable expense ledgers are included when TDS is calculated on an expense voucher."
+        >
+          <select
+            id="ledger-tds-applicable"
+            value={formData.tdsApplicable ? 'yes' : 'no'}
+            onChange={(e) => setFormData((p) => ({ ...p, tdsApplicable: e.target.value === 'yes' }))}
+            className="ui-select w-full"
+          >
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </PartyFormRow>
+      ) : null}
     </div></div>
   );
 
@@ -3868,6 +4241,7 @@ const SimpleAccountGroupCreateForm = ({ db, setDb, currentCompany, initialName =
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
 
     const name = String(formData.name || '').trim();
     const parentGroupId = String(formData.parentGroupId || '').trim();
@@ -4240,8 +4614,61 @@ export const JournalEntryForm = ({ db, setDb, currentCompany, openModal, onClose
         updatedAt: new Date().toISOString(),
       };
 
+      const tdsEventRows = Array.isArray(db.tdsTransactions) ? db.tdsTransactions : [];
+      const existingTdsEvent = tdsEventRows.find(
+        (event) =>
+          Number(event?.companyId) === Number(currentCompany.id) &&
+          String(event?.sourceType) === 'journal' &&
+          String(event?.sourceId) === String(initialData.id) &&
+          String(event?.status).toLowerCase() === 'posted' &&
+          !event?.reversalOfId
+      );
+      const remainingTdsEvents = existingTdsEvent
+        ? tdsEventRows.filter((event) => event !== existingTdsEvent)
+        : tdsEventRows;
+      const tdsParty = tdsLine
+        ? (tdsLine.side === 'RECEIVABLE' ? db.customers : db.vendors)?.find(
+            (party) => String(party.id) === String(formData.tdsPartyId || '')
+          )
+        : null;
+      const tdsRule = tdsLine?.natureCode ? resolveRule(tdsLine.natureCode, formData.date) : null;
+      const nextTdsEvent = tdsLine && tdsParty && tdsLine.natureCode && Math.abs(tdsLine.signed) > 0.005
+        ? {
+            id: existingTdsEvent?.id
+              ?? (tdsEventRows.reduce((max, event) => Math.max(max, Number(event?.id) || 0), 0) + 1),
+            ...tdsEventFrom(
+              {
+                natureCode: tdsLine.natureCode,
+                ruleVersionId: tdsRule?.id || '',
+                statutoryReference: ruleReference(tdsRule),
+                sectionCode: tdsRule?.sectionCode || '',
+                baseAmount: 0,
+                rate: 0,
+                tdsAmount: round2(tdsLine.signed),
+                ledgerId: String(tdsLine.account.id),
+                side: tdsLine.side,
+              },
+              {
+                company: currentCompany,
+                party: tdsParty,
+                source: { type: 'journal', id: initialData.id, number: jvNumber },
+                branchId: activeBranchId || '',
+                date: formData.date,
+              }
+            ),
+            ...(existingTdsEvent
+              ? {
+                  createdAt: existingTdsEvent.createdAt,
+                  createdBy: existingTdsEvent.createdBy,
+                  modifiedAt: new Date().toISOString(),
+                }
+              : {}),
+          }
+        : null;
+
       setDb({
         ...db,
+        tdsTransactions: nextTdsEvent ? [...remainingTdsEvents, nextTdsEvent] : remainingTdsEvents,
         journalEntries: (Array.isArray(db.journalEntries) ? db.journalEntries : []).map((j) =>
           j.companyId === currentCompany.id && String(j.id) === String(initialData.id) ? updated : j
         ),
@@ -5296,11 +5723,25 @@ const LedgerView = ({
   const totalCredit = displayRows.reduce((s, r) => s + Number(r?.credit ?? 0), 0);
 
   const closingForFiltered = displayRows.length ? Number(displayRows[displayRows.length - 1]?.runningBalance ?? 0) : openingForFiltered;
+  const companyProfile = currentCompany?.profile?.companySettings || {};
+  const companyAddressForLedger = [
+    currentCompany?.address || companyProfile.regAddress1,
+    companyProfile.regAddress2,
+    currentCompany?.city || companyProfile.regCity,
+    currentCompany?.state || companyProfile.regStateName,
+    currentCompany?.pincode || companyProfile.regPincode,
+    currentCompany?.country || companyProfile.regCountry,
+  ].map((value) => String(value || '').trim()).filter(Boolean).join(', ');
+  const ledgerPeriodFrom = filterFrom || displayRows[0]?.date || '';
+  const ledgerPeriodTo = filterTo || displayRows.at(-1)?.date || '';
 
   const doExport = (format) => {
     const payload = {
-      companyName: currentCompany?.name || '',
+      companyName: companyProfile.legalName || currentCompany?.name || '',
+      companyAddress: companyAddressForLedger,
       ledgerName: account?.name || '',
+      periodFrom: ledgerPeriodFrom,
+      periodTo: ledgerPeriodTo,
       openingBalance: openingForFiltered,
       closingBalance: closingForFiltered,
       rows: displayRows,
@@ -5426,8 +5867,10 @@ const LedgerView = ({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="ui-t-sec">Ledger: {account.name}</h3>
-          <div className="text-sm ui-muted">As of {formatDateIn(localDateIso())}</div>
+          <div className="text-sm font-semibold">{companyProfile.legalName || currentCompany?.name || 'Company'}</div>
+          {companyAddressForLedger ? <div className="mt-0.5 text-xs ui-muted">{companyAddressForLedger}</div> : null}
+          <h3 className="ui-t-sec mt-3">Ledger Statement of {account.name}</h3>
+          <div className="mt-1 text-sm ui-muted">Period: {ledgerPeriodFrom ? formatDateIn(ledgerPeriodFrom) : 'Beginning'} to {ledgerPeriodTo ? formatDateIn(ledgerPeriodTo) : formatDateIn(localDateIso())}</div>
         </div>
           <div className="flex items-center gap-2">
           <button type="button" onClick={onBack} className="ui-btn ui-btn-secondary">
@@ -5482,8 +5925,11 @@ const LedgerView = ({
             type="button"
             onClick={() =>
               printLedger({
-                companyName: currentCompany?.name || '',
+                companyName: companyProfile.legalName || currentCompany?.name || '',
+                companyAddress: companyAddressForLedger,
                 ledgerName: account?.name || '',
+                periodFrom: ledgerPeriodFrom,
+                periodTo: ledgerPeriodTo,
                 openingBalance: openingForFiltered,
                 closingBalance: closingForFiltered,
                 rows: displayRows,
@@ -6117,11 +6563,12 @@ const SalesReports = ({ db, currentCompany }) => {
  * one line saying what question it answers, grouped by category. Tiles are
  * clickable cards, so they take the hover lift.
  */
-const ReportsOverview = ({ db, currentCompany, onNavigate, isEnabled, branches = [], warehouses = [], defaultBranchId = '', defaultWarehouseId = '' }) => (
+const ReportsOverview = ({ db, currentCompany, onNavigate, onExit, isEnabled, branches = [], warehouses = [], defaultBranchId = '', defaultWarehouseId = '' }) => (
   <ReportsWorkspace
     db={db}
     currentCompany={currentCompany}
     onNavigate={onNavigate}
+    onExit={onExit}
     isEnabled={isEnabled}
     branches={branches}
     warehouses={warehouses}
@@ -6946,6 +7393,8 @@ const UomsList = ({ db, setDb, currentCompany }) => {
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
 
   const [newUom, setNewUom] = useState('');
+  const uomSearch = useListSearch(uoms, ['name']);
+  const visibleUoms = uomSearch.filtered;
 
   const addUom = async () => {
     const name = String(newUom || '').trim();
@@ -6983,51 +7432,43 @@ const UomsList = ({ db, setDb, currentCompany }) => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="ui-t-sec">Units of Measure (UoM)</h3>
-      </div>
-
-      <div className="ui-surface rounded-xl shadow-sm p-6 border space-y-4">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-2">
-            <label className="ui-label" htmlFor="app-add-uom">Add UoM</label>
-            <input id="app-add-uom"
-              type="text"
-              value={newUom}
-              onChange={(e) => setNewUom(e.target.value)}
-              className="ui-input w-full"
-              placeholder="e.g. Pcs, Kg, Hours"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={addUom}
-              className="w-full px-4 py-2 ui-btn ui-btn-primary rounded-lg"
-            >
-              Add
-            </button>
-          </div>
-        </div>
-
-        <div className="border rounded-lg overflow-hidden">
-          <table className="ui-table w-full">
-            <thead className="ui-sunken border-b">
+    <DocumentListShell
+      entity="items"
+      title="Units of Measure"
+      compact
+      tight
+      company={currentCompany}
+      search={{ value: uomSearch.query, onChange: uomSearch.setQuery, placeholder: 'Search units…', label: 'Search units' }}
+      headerExtras={
+        <input
+          type="text"
+          value={newUom}
+          onChange={(e) => setNewUom(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') addUom(); }}
+          className="ui-input ui-ctl-compact w-48"
+          aria-label="Unit name"
+          placeholder="New unit, e.g. Pcs"
+        />
+      }
+      primary={<button type="button" onClick={addUom} className="ui-btn ui-btn-primary"><Plus size={15} /> Add unit</button>}
+    >
+        <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 7rem)' }}>
+          <table className={`ui-table ui-table-wide ui-table-sticky w-full ${visibleUoms.length ? '' : 'cash-bank-empty-table'}`}>
+            <thead>
               <tr>
-                <th className="ui-th">UoM</th>
-                <th className="px-6 py-3"></th>
+                <th>Unit</th>
+                <th><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[rgb(var(--border))]">
-              {uoms.length === 0 ? (
+            <tbody className="ui-rows">
+              {visibleUoms.length === 0 ? (
                 <tr>
                   <td colSpan="2" className="px-6 py-10 text-center ui-muted">
-                    No UoMs found
+                    {uoms.length ? 'No units match' : 'No units yet'}
                   </td>
                 </tr>
               ) : (
-                uoms.map((u) => (
+                visibleUoms.map((u) => (
                   <tr key={u.id} className="ui-hover-sunken">
                     <td className="px-4 py-2.5 ui-col-entity">{u.name}</td>
                     <td className="px-4 py-2.5 text-right">
@@ -7042,9 +7483,7 @@ const UomsList = ({ db, setDb, currentCompany }) => {
           </table>
         </div>
 
-        <div className="text-sm ui-muted">Tip: Items pick their Unit from this master.</div>
-      </div>
-    </div>
+    </DocumentListShell>
   );
 };
 
@@ -7066,6 +7505,7 @@ const ItemCategoriesList = ({ db, setDb, currentCompany }) => {
 
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(null); // { id, name, description }
 
   const catSearch = useListSearch(categories, ['name', 'description']);
@@ -7133,6 +7573,7 @@ const ItemCategoriesList = ({ db, setDb, currentCompany }) => {
     });
     setNewName('');
     setNewDescription('');
+    setCreating(false);
     notify.success(`Category "${name}" created.`);
   };
 
@@ -7206,6 +7647,8 @@ const ItemCategoriesList = ({ db, setDb, currentCompany }) => {
     <DocumentListShell
       entity="category"
       title="Item Categories"
+      compact
+      tight
       company={currentCompany}
       search={{
         value: catSearch.query,
@@ -7231,7 +7674,7 @@ const ItemCategoriesList = ({ db, setDb, currentCompany }) => {
         });
       }}
       primary={
-        <button type="button" onClick={addCategory} className="ui-btn ui-btn-primary">
+        <button type="button" onClick={() => setCreating((value) => !value)} className="ui-btn ui-btn-primary">
           <Plus size={16} aria-hidden="true" /> Add category
         </button>
       }
@@ -7242,6 +7685,7 @@ const ItemCategoriesList = ({ db, setDb, currentCompany }) => {
         { label: 'Items categorised', value: catHeadline.items, count: true, tone: 'sent', Icon: Boxes },
         { label: 'Typed but not listed', value: catHeadline.orphans, count: true, tone: 'overdue', Icon: Ban },
       ]}
+      denseCards
       above={
         <>
           {orphans.length ? (
@@ -7258,15 +7702,10 @@ const ItemCategoriesList = ({ db, setDb, currentCompany }) => {
           ) : null}
         </>
       }
-      tip={{
-        storageKey: 'neev.tip.itemCategories',
-        Icon: Tags,
-        text: 'A category typed straight onto an item is not in this master — and a discount rule matching on category will never see it.',
-      }}
     >
       {/* Adding one is two fields and a button, so it lives at the top of the
           list it adds to rather than behind a form somewhere else. */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgb(var(--border))' }}>
+      {creating ? <div className="grid grid-cols-1 md:grid-cols-6 gap-2 px-3 py-2" style={{ borderBottom: '1px solid rgb(var(--border))' }}>
         <div className="md:col-span-2">
           <label className="ui-label" htmlFor="cat-name">Category name</label>
           <input
@@ -7294,10 +7733,10 @@ const ItemCategoriesList = ({ db, setDb, currentCompany }) => {
             Add
           </button>
         </div>
-      </div>
+      </div> : null}
 
-        <div className="ui-table-scroll">
-          <table className="ui-table ui-table-wide ui-table-sticky">
+        <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 11.5rem)' }}>
+          <table className={`ui-table ui-table-wide ui-table-sticky ${rows.length ? '' : 'cash-bank-empty-table'}`}>
             <thead>
               <tr>
                 <ColumnHeader label="Category" col="name" state={catFilters} />
@@ -7473,64 +7912,61 @@ const GstRatesList = ({ db, setDb, currentCompany }) => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="ui-t-sec">GST Rates</h3>
-      </div>
-
-      <div className="ui-surface rounded-xl shadow-sm p-6 border space-y-4">
-        <div className="grid grid-cols-4 gap-3">
+    <DocumentListShell
+      entity="gst"
+      title="GST Rates"
+      company={currentCompany}
+      cards={[{ label: 'GST rates', value: gstRates.length, count: true, tone: 'draft', Icon: BadgePercent }]}
+      denseCards
+    >
+        <div className="grid grid-cols-1 gap-2 border-b px-3 py-2 ui-border-c sm:grid-cols-[8rem_minmax(12rem,1fr)_auto]">
           <div>
-            <label className="ui-label" htmlFor="app-rate">Rate (%)</label>
-            <input id="app-rate"
+            <input
               type="number"
               value={newRate}
               onChange={(e) => setNewRate(e.target.value)}
-              className="ui-input w-full"
+              className="ui-input ui-ctl-compact w-full"
               min="0"
               max="100"
               step="0.01"
-              placeholder="e.g. 18"
+              aria-label="GST rate percent"
+              placeholder="Rate %, e.g. 18"
             />
-            {Number(newRate) > 0 ? (
-              <div className="ui-caption mt-1">
-                Intra-state: CGST {Number(newRate) / 2}% + SGST {Number(newRate) / 2}% · Inter-state: IGST {Number(newRate)}%
-              </div>
-            ) : null}
           </div>
-          <div className="col-span-2">
-            <label className="ui-label" htmlFor="app-name-becomes-a-ledger">Name (becomes a ledger)</label>
-            <input id="app-name-becomes-a-ledger"
+          <div>
+            <input
               type="text"
               value={newRateName}
               onChange={(e) => setNewRateName(e.target.value)}
-              className="ui-input w-full"
-              placeholder={Number(newRate) > 0 ? `GST ${Number(newRate)}%` : 'e.g. GST 18%'}
+              className="ui-input ui-ctl-compact w-full"
+              aria-label="GST rate name"
+              placeholder={Number(newRate) > 0 ? `Name, e.g. GST ${Number(newRate)}%` : 'Rate name, e.g. GST 18%'}
             />
           </div>
-          <div className="flex items-end">
+          <div>
             <button
               type="button"
               onClick={addRate}
-              className="w-full px-4 py-2 ui-btn ui-btn-primary rounded-lg"
+              className="ui-btn ui-btn-primary ui-btn-sm w-full sm:w-auto"
             >
-              Add
+              <Plus size={15} /> Add rate
             </button>
           </div>
         </div>
 
-        <div className="border rounded-lg overflow-hidden">
-          <table className="ui-table w-full">
-            <thead className="ui-sunken border-b">
+        <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}>
+          <table className="ui-table ui-table-wide ui-table-sticky w-full">
+            <thead>
               <tr>
-                <th className="ui-th">Rate (%)</th>
-                <th className="px-6 py-3"></th>
+                <th>Rate</th>
+                <th>Name</th>
+                <th><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[rgb(var(--border))]">
+            <tbody className="ui-rows">
               {gstRates.length === 0 ? (
                 <tr>
-                  <td colSpan="2" className="px-6 py-10 text-center ui-muted">
+                  <td colSpan="3" className="px-6 py-10 text-center ui-muted">
                     No GST rates found
                   </td>
                 </tr>
@@ -7538,6 +7974,7 @@ const GstRatesList = ({ db, setDb, currentCompany }) => {
                 gstRates.map((r) => (
                   <tr key={r.id} className="ui-hover-sunken">
                     <td className="px-4 py-2.5 ui-col-entity">{Number(r.rate)}%</td>
+                    <td className="px-4 py-2.5 ui-col-meta">{r.name || `GST ${Number(r.rate)}%`}</td>
                     <td className="px-4 py-2.5 text-right">
                       <button type="button" onClick={() => deleteRate(r.id)} className="text-[rgb(var(--neg))] hover:text-[rgb(var(--neg))]">
                         <Trash2 size={16} />
@@ -7550,11 +7987,7 @@ const GstRatesList = ({ db, setDb, currentCompany }) => {
           </table>
         </div>
 
-        <div className="text-sm ui-muted">
-          Tip: Items store their GST % directly. This list is your standard rate master.
-        </div>
-      </div>
-    </div>
+    </DocumentListShell>
   );
 };
 
@@ -8048,6 +8481,9 @@ const InvoiceTemplateSettings = ({ db, setDb, currentCompany, onBack = null }) =
   const cfg = docSettings?.templates?.invoice;
   const templateId = cfg?.templateId || 'classic';
   const accent = ACCENT_OPTIONS.find((a) => a.id === cfg?.accentId) || ACCENT_OPTIONS[0];
+  const printSettings = getInvoicePrintSettings(docSettings);
+  const updatePrintOption = (key, checked) =>
+    updateInvoiceTemplate({ printOptions: { ...printSettings.options, [key]: checked } });
 
   return (
     <div className="space-y-6">
@@ -8058,20 +8494,23 @@ const InvoiceTemplateSettings = ({ db, setDb, currentCompany, onBack = null }) =
               <ArrowLeft size={18} />
             </button>
           ) : null}
-          <h3 className="ui-t-sec truncate">Invoice Templates</h3>
+          <div className="min-w-0">
+            <h3 className="ui-t-sec truncate">Invoice Print Designer</h3>
+            <p className="ui-caption">Design what customers receive without changing accounting data.</p>
+          </div>
         </div>
         <button type="button" onClick={handleSave} className="ui-btn ui-btn-primary shrink-0">
           Save
         </button>
       </div>
 
-      <div className="ui-surface rounded-xl shadow-sm p-6 border space-y-4">
+      <div className="ui-surface rounded-xl shadow-sm p-6 border space-y-5">
         <div>
           <h4 className="font-bold">Select Invoice Template</h4>
           <p className="text-sm ui-muted">This template is used when you open an invoice from the invoice list.</p>
         </div>
 
-        <div className="max-w-xl space-y-3">
+        <div className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="ui-label" htmlFor="app-template-2">Template</label>
@@ -8103,6 +8542,124 @@ const InvoiceTemplateSettings = ({ db, setDb, currentCompany, onBack = null }) =
             </div>
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="ui-label">Document title</label>
+              <input
+                value={printSettings.title}
+                onChange={(e) => updateInvoiceTemplate({ printTitle: e.target.value })}
+                className="ui-input w-full"
+                placeholder="TAX INVOICE"
+              />
+            </div>
+            <div>
+              <label className="ui-label">Subtitle</label>
+              <input
+                value={printSettings.subtitle}
+                onChange={(e) => updateInvoiceTemplate({ printSubtitle: e.target.value })}
+                className="ui-input w-full"
+                placeholder="Optional"
+              />
+            </div>
+            <div>
+              <label className="ui-label">Paper</label>
+              <select value={printSettings.paperSize} onChange={(e) => updateInvoiceTemplate({ paperSize: e.target.value })} className="ui-select w-full">
+                <option value="a4">A4</option><option value="a5">A5</option><option value="letter">Letter</option>
+              </select>
+            </div>
+            <div>
+              <label className="ui-label">Spacing</label>
+              <select value={printSettings.margin} onChange={(e) => updateInvoiceTemplate({ margin: e.target.value })} className="ui-select w-full">
+                <option value="compact">Compact</option><option value="normal">Balanced</option><option value="wide">Spacious</option>
+              </select>
+            </div>
+            <div>
+              <label className="ui-label">Orientation</label>
+              <select value={printSettings.orientation} onChange={(e) => updateInvoiceTemplate({ orientation: e.target.value })} className="ui-select w-full">
+                <option value="portrait">Portrait</option><option value="landscape">Landscape</option>
+              </select>
+            </div>
+            <div>
+              <label className="ui-label">Print style</label>
+              <select value={printSettings.printFormat} onChange={(e) => updateInvoiceTemplate({ printFormat: e.target.value })} className="ui-select w-full">
+                <option value="standard">Standard</option><option value="compact">Compact</option><option value="simple">Simple</option>
+              </select>
+            </div>
+            <div>
+              <label className="ui-label">Language</label>
+              <select value={printSettings.language} onChange={(e) => updateInvoiceTemplate({ language: e.target.value })} className="ui-select w-full">
+                <option>English</option><option>Hindi</option><option>Kannada</option>
+              </select>
+            </div>
+            <div>
+              <label className="ui-label">Copies</label>
+              <input type="number" min="1" max="5" value={printSettings.copies} onChange={(e) => updateInvoiceTemplate({ copies: Number(e.target.value || 1) })} className="ui-input w-full" />
+            </div>
+            <div>
+              <label className="ui-label">Item names</label>
+              <select value={printSettings.itemNameStyle} onChange={(e) => updateInvoiceTemplate({ itemNameStyle: e.target.value })} className="ui-select w-full">
+                <option value="name">Name only</option><option value="code">Code only</option><option value="both">Code and name</option>
+              </select>
+            </div>
+            <div>
+              <label className="ui-label">Customer names</label>
+              <select value={printSettings.partyNameStyle} onChange={(e) => updateInvoiceTemplate({ partyNameStyle: e.target.value })} className="ui-select w-full">
+                <option value="name">Display name</option><option value="legal">Legal name</option><option value="both">Display and legal name</option>
+              </select>
+            </div>
+            <div>
+              <label className="ui-label">Page range</label>
+              <input value={printSettings.pageRange} onChange={(e) => updateInvoiceTemplate({ pageRange: e.target.value })} className="ui-input w-full" placeholder="All or 1-3" />
+            </div>
+          </div>
+
+          <div>
+            <div className="font-semibold">Printed content</div>
+            <p className="text-sm ui-muted">Hide something from the customer copy without removing it from invoice entry or your books.</p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {INVOICE_PRINT_GROUPS.map((group) => (
+              <details key={group.key} className="rounded-xl border overflow-hidden" open={group.key === 'identity' || group.key === 'items'}>
+                <summary className="px-4 py-3 bg-[rgb(var(--surface-sunken))] cursor-pointer list-none flex items-center justify-between gap-3">
+                  <span>
+                    <span className="font-semibold text-sm block">{group.label}</span>
+                    <span className="ui-caption mt-0.5 block">{group.description}</span>
+                  </span>
+                  <span className="ui-pill ui-pill-neutral shrink-0">{group.options.filter(([key]) => printSettings.options[key] !== false).length}/{group.options.length}</span>
+                </summary>
+                <div className="divide-y">
+                  {group.options.map(([key, label]) => (
+                    <label key={key} className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer ui-hover-sunken">
+                      <span className="text-sm">{label}</span>
+                      <input type="checkbox" className="ui-checkbox" checked={printSettings.options[key] !== false} onChange={(e) => updatePrintOption(key, e.target.checked)} />
+                    </label>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="ui-label">Copy label</label>
+              <input value={printSettings.copyLabel} onChange={(e) => updateInvoiceTemplate({ copyLabel: e.target.value })} className="ui-input w-full" placeholder="Original for recipient" />
+            </div>
+            <div>
+              <label className="ui-label">Jurisdiction</label>
+              <input value={printSettings.jurisdictionText} onChange={(e) => updateInvoiceTemplate({ jurisdictionText: e.target.value })} className="ui-input w-full" placeholder="Subject to Bengaluru jurisdiction" />
+            </div>
+            <div>
+              <label className="ui-label">Prepared / verified by</label>
+              <input value={printSettings.preparedByText} onChange={(e) => updateInvoiceTemplate({ preparedByText: e.target.value })} className="ui-input w-full" placeholder="Names or designation" />
+            </div>
+            <div className="flex items-end">
+              <label className="inline-flex items-center gap-2 text-sm cursor-pointer pb-2">
+                <input type="checkbox" className="ui-checkbox" checked={printSettings.optimizePaper} onChange={(e) => updateInvoiceTemplate({ optimizePaper: e.target.checked })} />
+                Fit content to save paper
+              </label>
+            </div>
+          </div>
+
           <div>
             <label className="ui-label" htmlFor="app-terms-amp-conditions-printed-on-every-invoice">Terms &amp; conditions (printed on every invoice)</label>
             <textarea id="app-terms-amp-conditions-printed-on-every-invoice"
@@ -8112,6 +8669,21 @@ const InvoiceTemplateSettings = ({ db, setDb, currentCompany, onBack = null }) =
               rows={4}
               placeholder={'1. Goods once sold will not be taken back.\n2. Interest @18% p.a. on overdue invoices.'}
             />
+          </div>
+
+          <div>
+            <label className="ui-label">Footer note</label>
+            <input
+              value={printSettings.footerText}
+              onChange={(e) => updateInvoiceTemplate({ footerText: e.target.value })}
+              className="ui-input w-full"
+              placeholder="This is a computer generated invoice."
+            />
+          </div>
+
+          <div>
+            <label className="ui-label">Declaration</label>
+            <textarea value={printSettings.declarationText} onChange={(e) => updateInvoiceTemplate({ declarationText: e.target.value })} className="ui-input w-full" rows={3} placeholder="Declaration printed above the signature area" />
           </div>
 
           <button
@@ -8145,6 +8717,7 @@ const InvoiceTemplateSettings = ({ db, setDb, currentCompany, onBack = null }) =
 };
 
 const CompanyProfile = ({ db, setDb, currentCompany }) => {
+  const companyGstEnabled = Boolean(currentCompany?.profile?.taxCompliances?.gstEnabled ?? currentCompany?.gstEnabled ?? currentCompany?.gstin);
   const stateOptions = [
     'Andaman & Nicobar Islands',
     'Andhra Pradesh',
@@ -8199,7 +8772,7 @@ const CompanyProfile = ({ db, setDb, currentCompany }) => {
     return {
       name: currentCompany?.name || '',
       currency: 'INR',
-      gstRegistration: profile.gstRegistration || 'Registered',
+      gstRegistration: companyGstEnabled && String(profile.gstRegistration || '').toLowerCase() === 'unregistered' ? 'Registered' : (profile.gstRegistration || 'Registered'),
       gstin: profile.gstin || '',
       state: profile.state || '',
     };
@@ -8218,6 +8791,7 @@ const CompanyProfile = ({ db, setDb, currentCompany }) => {
 
   const handleSave = () => {
     const gstinNormalized = String(formData.gstin || '').trim().toUpperCase();
+    if (companyGstEnabled && !gstinNormalized) return notify.error('GSTIN is mandatory while GST is enabled.');
     const stateFromGstin = getGstStateFromGstin(gstinNormalized);
     const nextState = stateFromGstin || String(formData.state || '').trim();
 
@@ -8280,7 +8854,7 @@ const CompanyProfile = ({ db, setDb, currentCompany }) => {
               className="ui-select w-full"
             >
               <option value="Registered">Registered</option>
-              <option value="Unregistered">Unregistered</option>
+              {!companyGstEnabled ? <option value="Unregistered">Unregistered</option> : null}
               <option value="Composition">Composition</option>
               <option value="SEZ">SEZ</option>
             </select>
@@ -8763,7 +9337,137 @@ const TaxCompliancesView = ({ db, setDb, currentCompany }) => {
   );
 };
 
-export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company', showSidebar = true, onOpenCompanyList = null, onAddCompany = null }) => {
+const GstRegistrationsSettings = ({ db, setDb, currentCompany }) => {
+  const profile = currentCompany?.profile && typeof currentCompany.profile === 'object' ? currentCompany.profile : {};
+  const tax = profile?.taxCompliances && typeof profile.taxCompliances === 'object' ? profile.taxCompliances : {};
+  const primarySeed = {
+    id: 'primary',
+    primary: true,
+    status: 'Active',
+    registrationType: String(currentCompany?.gstRegistration || '').toLowerCase() === 'unregistered' ? 'Regular' : (currentCompany?.gstRegistration || 'Regular'),
+    gstin: currentCompany?.gstin || '',
+    state: currentCompany?.state || '',
+    assesseeOtherTerritory: false,
+    periodicity: 'Monthly',
+    username: '',
+    filingMode: 'Not Applicable',
+    eInvoiceApplicable: false,
+  };
+  const savedRows = Array.isArray(tax.gstRegistrations) && tax.gstRegistrations.length ? tax.gstRegistrations : [primarySeed];
+  const [rows, setRows] = useState(savedRows);
+  const [query, setQuery] = useState('');
+  const [selectedId, setSelectedId] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [menuId, setMenuId] = useState('');
+
+  useEffect(() => {
+    const nextProfile = currentCompany?.profile && typeof currentCompany.profile === 'object' ? currentCompany.profile : {};
+    const nextTax = nextProfile?.taxCompliances && typeof nextProfile.taxCompliances === 'object' ? nextProfile.taxCompliances : {};
+    const nextRows = Array.isArray(nextTax.gstRegistrations) && nextTax.gstRegistrations.length
+      ? nextTax.gstRegistrations
+      : [{ ...primarySeed, gstin: currentCompany?.gstin || '', state: currentCompany?.state || '', registrationType: String(currentCompany?.gstRegistration || '').toLowerCase() === 'unregistered' ? 'Regular' : (currentCompany?.gstRegistration || 'Regular') }];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRows(nextRows);
+  }, [currentCompany?.id]);
+
+  const stateOptions = useMemo(() => Array.from(new Set(Object.values(GST_STATE_BY_CODE || {}))).filter(Boolean).sort().map((state) => ({ value: state, label: state })), []);
+  const visibleRows = rows.filter((row) => [row.gstin, row.state, row.registrationType, row.periodicity, row.status].some((value) => String(value || '').toLowerCase().includes(query.trim().toLowerCase())));
+  const openRecord = (row, edit = false) => {
+    setSelectedId(String(row.id));
+    setDraft({ ...row });
+    setEditing(edit);
+    setMenuId('');
+  };
+  const closeDrawer = () => { setSelectedId(''); setDraft(null); setEditing(false); };
+  const addRegistration = () => {
+    const row = { ...primarySeed, id: `gst-${Date.now()}`, primary: false, gstin: '', state: '', registrationType: 'Regular' };
+    setSelectedId(row.id); setDraft(row); setEditing(true);
+  };
+  const persist = (nextRows) => {
+    const primary = nextRows.find((row) => row.primary) || nextRows[0];
+    setRows(nextRows);
+    setDb({
+      ...db,
+      companies: (db.companies || []).map((company) => company.id === currentCompany.id ? {
+        ...company,
+        gstEnabled: true,
+        gstRegistration: primary?.registrationType || company.gstRegistration,
+        gstin: primary?.gstin || company.gstin,
+        state: primary?.state || company.state,
+        profile: { ...(company.profile || {}), taxCompliances: { ...((company.profile || {}).taxCompliances || {}), gstEnabled: true, gstRegistrations: nextRows } },
+      } : company),
+    });
+  };
+  const saveDraft = () => {
+    const gstin = String(draft?.gstin || '').trim().toUpperCase();
+    const state = getGstStateFromGstin(gstin) || String(draft?.state || '').trim();
+    if (!gstin) return notify.error('GSTIN is mandatory to enable GST.');
+    if (!/^\d{2}[A-Z0-9]{13}$/.test(gstin) || !getGstStateFromGstin(gstin)) return notify.error('Enter a valid 15-character GSTIN.');
+    if (!state) return notify.error('State is required.');
+    const saved = { ...draft, gstin, state };
+    const exists = rows.some((row) => String(row.id) === String(saved.id));
+    persist(exists ? rows.map((row) => String(row.id) === String(saved.id) ? saved : row) : [...rows, saved]);
+    notify.success('GST registration saved.');
+    setEditing(false); setDraft(saved);
+  };
+  const removeRegistration = async (row) => {
+    setMenuId('');
+    if (row.primary) return notify.error('The primary GST registration cannot be deleted.');
+    if (!await confirmDialog({ title: 'Delete GST registration?', message: `Delete ${row.gstin || 'this registration'}?`, confirmLabel: 'Delete' })) return;
+    persist(rows.filter((item) => String(item.id) !== String(row.id)));
+    if (String(selectedId) === String(row.id)) closeDrawer();
+  };
+
+  return (
+    <div className="settings-branches gst-registration-settings space-y-3">
+      <div className="branch-list-toolbar flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[rgb(var(--heading-bg))] px-3 py-2">
+        <div><div className="ui-t-sec">GST Registrations</div><div className="ui-caption">{visibleRows.length} {visibleRows.length === 1 ? 'registration' : 'registrations'}</div></div>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <div className="relative w-full max-w-xs"><Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 ui-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="ui-input w-full bg-[rgb(var(--surface))] ps-8" placeholder="Search GST registrations" /></div>
+          <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => exportRows({ fileName: 'GST Registrations', label: 'registration(s)', columns: [{ key: 'gstin', label: 'GSTIN' }, { key: 'state', label: 'State' }, { key: 'registrationType', label: 'Registration Type' }, { key: 'periodicity', label: 'Periodicity' }, { key: 'status', label: 'Status' }], rows: visibleRows })}><Download size={14} /> Export</button>
+          <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" onClick={addRegistration}><Plus size={14} /> Add Other GST</button>
+        </div>
+      </div>
+
+      <div className="branch-table-wrap ui-surface border rounded-lg overflow-hidden">
+        <table className="branch-table ui-table w-full table-fixed ui-settled">
+          <colgroup><col style={{ width: '24%' }} /><col style={{ width: '19%' }} /><col style={{ width: '20%' }} /><col style={{ width: '17%' }} /><col style={{ width: '14%' }} /><col style={{ width: '6%' }} /></colgroup>
+          <thead><tr><th className="ui-th">GSTIN</th><th className="ui-th">State</th><th className="ui-th">Registration Type</th><th className="ui-th">Periodicity</th><th className="ui-th">Status</th><th className="ui-th ui-num">Actions</th></tr></thead>
+          <tbody>{visibleRows.map((row) => <tr key={row.id}>
+            <td className="ui-td ui-mono"><button type="button" className="hover:underline" onClick={() => openRecord(row)}>{row.gstin || 'Add details'}</button></td>
+            <td className="ui-td">{row.state || ''}</td><td className="ui-td">{row.registrationType || ''}</td><td className="ui-td">{row.periodicity || ''}</td>
+            <td className="ui-td"><span className={row.status === 'Inactive' ? 'ui-pill ui-pill-neutral' : 'ui-pill ui-pill-pos'}>{row.status || 'Active'}</span></td>
+            <td className="ui-td text-right relative"><button type="button" className="ui-icon-btn" aria-label={`Actions for ${row.gstin || row.state || 'GST registration'}`} onClick={() => setMenuId((current) => current === row.id ? '' : row.id)}><MoreVertical size={15} /></button>{menuId === row.id ? <div className="absolute end-9 top-1 z-30 w-44 rounded border bg-[rgb(var(--surface))] p-1 shadow-lg"><button type="button" className="report-menu-item flex items-center gap-2" onClick={() => openRecord(row, true)}><Pencil size={14} /> Edit</button><button type="button" className="report-menu-item flex items-center gap-2 text-[rgb(var(--neg))]" onClick={() => removeRegistration(row)}><Trash2 size={14} /> Delete</button></div> : null}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+
+      {selectedId ? <button type="button" className="settings-drawer-backdrop" aria-label="Close GST details" onClick={closeDrawer} /> : null}
+      {selectedId && draft ? <aside className="settings-side-drawer branch-detail-card space-y-3">
+        <div className="settings-drawer-heading flex items-center justify-between"><div><div className="ui-t-sec">{editing ? (draft.primary ? 'GST Details' : 'Other GST Details') : 'GST Details'}</div><div className="ui-caption">Registration and filing information</div></div><div className="flex gap-2">{!editing ? <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => setEditing(true)}><Pencil size={14} /> Edit</button> : null}<button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={closeDrawer}>Close</button></div></div>
+        {editing ? <div className="branch-editor-form space-y-3">
+          <section className="branch-editor-section grid grid-cols-2 gap-3"><div className="branch-editor-section-title col-span-2">GST Registration Details</div>
+            <div><label className="ui-label">Registration Status</label><select className="ui-select w-full" value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}><option>Active</option><option>Inactive</option></select></div>
+            <div><label className="ui-label">Registration Type</label><select className="ui-select w-full" value={draft.registrationType} onChange={(event) => setDraft({ ...draft, registrationType: event.target.value })}><option>Regular</option><option>Composition</option><option>SEZ</option></select></div>
+            <div><label className="ui-label">GSTIN/UIN</label><input className="ui-input ui-mono w-full" value={draft.gstin} maxLength={15} onChange={(event) => { const gstin = event.target.value.toUpperCase(); setDraft({ ...draft, gstin, state: getGstStateFromGstin(gstin) || draft.state }); }} /></div>
+            <div><PopupSelect label="State" value={draft.state} onChange={(state) => setDraft({ ...draft, state })} options={stateOptions} placeholder="Select state" /></div>
+            <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" className="ui-checkbox" checked={Boolean(draft.assesseeOtherTerritory)} onChange={(event) => setDraft({ ...draft, assesseeOtherTerritory: event.target.checked })} /> Assessee of Other Territory</label>
+          </section>
+          <section className="branch-editor-section grid grid-cols-2 gap-3"><div className="branch-editor-section-title col-span-2">Filing Details</div>
+            <div><label className="ui-label">Periodicity of GSTR-1</label><select className="ui-select w-full" value={draft.periodicity} onChange={(event) => setDraft({ ...draft, periodicity: event.target.value })}><option>Monthly</option><option>Quarterly</option></select></div>
+            <div><label className="ui-label">GST Username</label><input className="ui-input w-full" value={draft.username} onChange={(event) => setDraft({ ...draft, username: event.target.value })} /></div>
+            <div><label className="ui-label">Mode of Filing</label><select className="ui-select w-full" value={draft.filingMode} onChange={(event) => setDraft({ ...draft, filingMode: event.target.value })}><option>Not Applicable</option><option>Online</option><option>Offline</option></select></div>
+            <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" className="ui-checkbox" checked={Boolean(draft.eInvoiceApplicable)} onChange={(event) => setDraft({ ...draft, eInvoiceApplicable: event.target.checked })} /> e-Invoicing applicable</label>
+          </section>
+          <div className="flex justify-end gap-2"><button type="button" className="ui-btn ui-btn-secondary" onClick={closeDrawer}>Cancel</button><button type="button" className="ui-btn ui-btn-primary" onClick={saveDraft}>Save</button></div>
+        </div> : <div className="grid grid-cols-2 gap-3">{[['Registration Status', draft.status], ['State', draft.state], ['Registration Type', draft.registrationType], ['GSTIN/UIN', draft.gstin], ['GSTR-1 Periodicity', draft.periodicity], ['GST Username', draft.username], ['Mode of Filing', draft.filingMode], ['e-Invoicing', draft.eInvoiceApplicable ? 'Yes' : 'No']].map(([label, value]) => <div key={label}><div className="ui-detail-label">{label}</div><div className="ui-detail-value">{value || ''}</div></div>)}</div>}
+      </aside> : null}
+    </div>
+  );
+};
+
+export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company', showSidebar = true, onOpenCompanyList: _onOpenCompanyList = null, onAddCompany: _onAddCompany = null }) => {
   const [activeTab, setActiveTab] = useState(() => (String(initialTab || 'company') === 'tax' ? 'tax' : 'company'));
   /*
    * Company Profile sat permanently open as a form, while its two neighbours
@@ -8774,7 +9478,6 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
    * leaning on the keyboard.
    */
   const [editingCompany, setEditingCompany] = useState(false);
-  const companyCount = (db?.companies || []).length;
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -8792,6 +9495,7 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
   const companySettings = (saved.companySettings && typeof saved.companySettings === 'object') ? saved.companySettings : {};
 
   const [form, setForm] = useState(() => ({
+    companyName: companySettings.companyName || currentCompany?.name || '',
     legalName: companySettings.legalName || (currentCompany?.name || ''),
     tradeName: companySettings.tradeName || '',
     entityType: companySettings.entityType || 'Proprietorship',
@@ -8813,12 +9517,19 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
     regStateCode: companySettings.regStateCode || '',
     regPincode: companySettings.regPincode || '',
     regCountry: companySettings.regCountry || 'India',
+    cin: companySettings.cin || '',
+    pan: companySettings.pan || '',
+    gstin: companySettings.gstin || currentCompany?.gstin || '',
+    numberFormat: companySettings.numberFormat || '12,34,567.89',
+    dateFormat: companySettings.dateFormat || 'DD-MM-YYYY',
+    logo: companySettings.logo || currentCompany?.logo || '',
   }));
 
   useEffect(() => {
     const nextSaved = (currentCompany && typeof currentCompany === 'object' ? currentCompany.profile : null) || {};
     const nextCompanySettings = (nextSaved.companySettings && typeof nextSaved.companySettings === 'object') ? nextSaved.companySettings : {};
     setForm({
+      companyName: nextCompanySettings.companyName || currentCompany?.name || '',
       legalName: nextCompanySettings.legalName || (currentCompany?.name || ''),
       tradeName: nextCompanySettings.tradeName || '',
       entityType: nextCompanySettings.entityType || 'Proprietorship',
@@ -8838,12 +9549,19 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
       regStateCode: nextCompanySettings.regStateCode || '',
       regPincode: nextCompanySettings.regPincode || '',
       regCountry: nextCompanySettings.regCountry || 'India',
+      cin: nextCompanySettings.cin || '',
+      pan: nextCompanySettings.pan || '',
+      gstin: nextCompanySettings.gstin || currentCompany?.gstin || '',
+      numberFormat: nextCompanySettings.numberFormat || '12,34,567.89',
+      dateFormat: nextCompanySettings.dateFormat || 'DD-MM-YYYY',
+      logo: nextCompanySettings.logo || currentCompany?.logo || '',
     });
   }, [currentCompany?.id]);
 
   const updateForm = async (patch) => setForm((p) => ({ ...p, ...patch }));
 
   const saveCompanySettings = async () => {
+    const companyName = String(form.companyName || '').trim();
     const legalName = String(form.legalName || '').trim();
     const regAddress1 = String(form.regAddress1 || '').trim();
     const regCity = String(form.regCity || '').trim();
@@ -8851,7 +9569,8 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
     const regPincode = String(form.regPincode || '').trim();
     const regCountry = String(form.regCountry || '').trim();
 
-    if (!legalName) return notify.error('Legal Company Name is required.');
+    if (!companyName) return notify.error('Company Name is required.');
+    if (!legalName) return notify.error('Legal Name is required.');
     // Name the exact gap: "Registered Address is required" while the user is
     // looking at a filled address line reads as a broken form.
     const missing = [
@@ -8870,6 +9589,7 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
     const stateName = (GST_STATE_BY_CODE && regStateCode && GST_STATE_BY_CODE[regStateCode]) ? GST_STATE_BY_CODE[regStateCode] : '';
 
     const payload = {
+      companyName,
       legalName,
       tradeName: String(form.tradeName || '').trim(),
       entityType: String(form.entityType || '').trim(),
@@ -8890,6 +9610,12 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
       regStateName: stateName,
       regPincode,
       regCountry,
+      cin: String(form.cin || '').trim(),
+      pan: String(form.pan || '').trim().toUpperCase(),
+      gstin: String(form.gstin || '').trim().toUpperCase(),
+      numberFormat: String(form.numberFormat || '12,34,567.89').trim(),
+      dateFormat: String(form.dateFormat || 'DD-MM-YYYY').trim(),
+      logo: String(form.logo || ''),
     };
 
     setSaving(true);
@@ -8902,7 +9628,7 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
           const prevProfile = c?.profile && typeof c.profile === 'object' ? c.profile : {};
           return {
             ...c,
-            name: legalName,
+            name: companyName,
             // Mirror the fields every GST document reads. The profile blob is
             // the source of record for this page, but invoice/bill/note
             // creation checks company.state and company.gstin at the root —
@@ -8920,7 +9646,8 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
             city: regCity,
             pincode: regPincode,
             country: regCountry,
-            ...(payload.gstin !== undefined ? { gstin: String(payload.gstin || '').trim() } : {}),
+            gstin: payload.gstin,
+            logo: payload.logo,
             profile: {
               ...prevProfile,
               companySettings: payload,
@@ -10395,26 +11122,10 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
           </div>
         ) : null}
 
-        <div className="flex-1 p-6">
+        <div className={showSidebar ? 'flex-1 p-6' : 'min-w-0 flex-1'}>
           {activeTab === 'company' ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0">
-                  <div className="ui-t-sec truncate">{currentCompany?.name || 'Company'}</div>
-                  {/*
-                    * This screen only ever shows the active company — there is
-                    * one `currentCompany` and saving writes to it. With a
-                    * single company the heading is enough; with several, a page
-                    * headed "Company" gave no way to tell whose record was on
-                    * screen, so it names the company and says where the others
-                    * are.
-                    */}
-                  <div className="text-sm ui-muted">
-                    {companyCount > 1
-                      ? `Active company · ${companyCount} in this book`
-                      : 'Basic, contact and registered address'}
-                  </div>
-                </div>
+            <div className="company-profile-view relative">
+              <div className="company-profile-actions flex flex-wrap items-center justify-end gap-2">
                 {editingCompany ? (
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => setEditingCompany(false)} className="ui-btn ui-btn-ghost">
@@ -10434,204 +11145,26 @@ export const SettingsView = ({ db, setDb, currentCompany, initialTab = 'company'
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
-                    {/*
-                      * Edit changes this company. Adding another one is a
-                      * different act and had no control anywhere in the app,
-                      * so the only company you could ever have was the one
-                      * signup made.
-                      */}
-                    {onAddCompany ? (
-                      <button type="button" onClick={onAddCompany} className="ui-btn ui-btn-ghost">
-                        <Plus size={14} aria-hidden="true" /> Add company
-                      </button>
-                    ) : null}
-                    {companyCount > 1 && onOpenCompanyList ? (
-                      <button type="button" onClick={onOpenCompanyList} className="ui-btn ui-btn-ghost">
-                        Switch company
-                      </button>
-                    ) : null}
-                    <button type="button" onClick={() => setEditingCompany(true)} className="ui-btn ui-btn-secondary">
-                      <Pencil size={14} aria-hidden="true" /> Edit
-                    </button>
-                  </div>
+                  <button type="button" onClick={() => setEditingCompany(true)} className="ui-btn ui-btn-secondary">
+                    <Pencil size={14} aria-hidden="true" /> Edit
+                  </button>
                 )}
               </div>
 
               {editingCompany ? (
-              <div className="space-y-6 max-w-4xl">
-                <div className="border rounded-xl p-5 shadow-sm ui-surface">
-                  <div className="flex items-baseline justify-between gap-4 mb-4">
-                    <div>
-                      <div className="text-sm font-semibold ui-fg">Basic details</div>
-                      <div className="text-xs ui-muted">Business identity and accounting defaults</div>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="ui-label" htmlFor="app-legal-company-name">Legal Company Name</label>
-                      <input id="app-legal-company-name" value={form.legalName} onChange={(e) => updateForm({ legalName: e.target.value })} className="ui-input w-full" />
-                    </div>
-                    <div>
-                      <label className="ui-label" htmlFor="app-display-trade-name">Display / Trade Name</label>
-                      <input id="app-display-trade-name" value={form.tradeName} onChange={(e) => updateForm({ tradeName: e.target.value })} className="ui-input w-full" />
-                    </div>
-                    <div>
-                      <label className="ui-label" htmlFor="app-business-type-entity-type">Business Type / Entity Type</label>
-                      <select id="app-business-type-entity-type" value={form.entityType} onChange={(e) => updateForm({ entityType: e.target.value })} className="ui-select w-full ui-surface">
-                        {COMPANY_ENTITY_TYPES.map((x) => (
-                          <option key={x} value={x}>{x}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="ui-label">Industry</label>
-                      <div className="mt-2 border rounded-lg p-3 ui-surface">
-                        <div className="space-y-2">
-                          {INDUSTRY_OPTIONS.map((x) => {
-                            const checked = Array.isArray(form.industries) && form.industries.includes(x);
-                            return (
-                              <label key={x} className="flex items-center gap-2 text-sm ui-fg">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(e) => {
-                                    const next = new Set(Array.isArray(form.industries) ? form.industries : []);
-                                    if (e.target.checked) next.add(x);
-                                    else next.delete(x);
-                                    updateForm({ industries: Array.from(next) });
-                                  }}
-                                  className="ui-checkbox"
-                                />
-                                <span>{x}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      <div className="text-xs ui-muted mt-1">Select one or more</div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="ui-label" htmlFor="app-incorporation-date">Incorporation Date</label>
-                        <input id="app-incorporation-date" type="date" value={form.incorporationDate} onChange={(e) => updateForm({ incorporationDate: e.target.value })} className="ui-input w-full" />
-                      </div>
-                      <div>
-                        <label className="ui-label" htmlFor="app-financial-year-start">Financial Year Start</label>
-                        <input id="app-financial-year-start" type="date" value={form.financialYearStart} onChange={(e) => updateForm({ financialYearStart: e.target.value })} className="ui-input w-full" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="ui-label" htmlFor="app-books-begin-date">Books Begin Date</label>
-                        <input id="app-books-begin-date" type="date" value={form.booksBeginDate} onChange={(e) => updateForm({ booksBeginDate: e.target.value })} className="ui-input w-full" />
-                      </div>
-                      <div>
-                        <label className="ui-label" htmlFor="app-base-currency">Base Currency</label>
-                        <select id="app-base-currency" value={form.baseCurrency} onChange={(e) => updateForm({ baseCurrency: e.target.value })} className="ui-select w-full ui-surface">
-                          {CURRENCY_OPTIONS.map((x) => (
-                            <option key={x} value={x}>{x}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="ui-label" htmlFor="app-country">Country</label>
-                        <select id="app-country" value={form.country} onChange={(e) => updateForm({ country: e.target.value })} className="ui-select w-full ui-surface">
-                          {COUNTRY_OPTIONS.map((x) => (
-                            <option key={x} value={x}>{x}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="ui-label" htmlFor="app-time-zone">Time Zone</label>
-                        <select id="app-time-zone" value={form.timeZone} onChange={(e) => updateForm({ timeZone: e.target.value })} className="ui-select w-full ui-surface">
-                          {TZ_OPTIONS.map((x) => (
-                            <option key={x} value={x}>{x}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border rounded-xl p-5 shadow-sm ui-surface">
-                  <div className="mb-4">
-                    <div className="text-sm font-semibold ui-fg">Contact details</div>
-                    <div className="text-xs ui-muted">Where customers and vendors can reach you</div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="ui-label" htmlFor="app-official-email">Official Email</label>
-                        <input id="app-official-email" value={form.officialEmail} onChange={(e) => updateForm({ officialEmail: e.target.value })} className="ui-input w-full" />
-                      </div>
-                      <div>
-                        <label className="ui-label" htmlFor="app-phone-number">Phone Number</label>
-                        <input id="app-phone-number" value={form.phone} onChange={(e) => updateForm({ phone: e.target.value })} className="ui-input w-full" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="ui-label" htmlFor="app-website">Website</label>
-                      <input id="app-website" value={form.website} onChange={(e) => updateForm({ website: e.target.value })} className="ui-input w-full" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border rounded-xl p-5 shadow-sm ui-surface">
-                  <div className="mb-4">
-                    <div className="text-sm font-semibold ui-fg">Registered Address (Mandatory)</div>
-                    <div className="text-xs ui-muted">Used for GST state mapping and statutory documents</div>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="ui-label" htmlFor="app-address-line-1">Address Line 1</label>
-                      <input id="app-address-line-1" value={form.regAddress1} onChange={(e) => updateForm({ regAddress1: e.target.value })} className="ui-input w-full" />
-                    </div>
-                    <div>
-                      <label className="ui-label" htmlFor="app-address-line-2">Address Line 2</label>
-                      <input id="app-address-line-2" value={form.regAddress2} onChange={(e) => updateForm({ regAddress2: e.target.value })} className="ui-input w-full" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="ui-label" htmlFor="app-city">City</label>
-                        <input id="app-city" value={form.regCity} onChange={(e) => updateForm({ regCity: e.target.value })} className="ui-input w-full" />
-                      </div>
-                      <div>
-                        <label className="ui-label" htmlFor="app-state-ut">State / UT</label>
-                        <select id="app-state-ut" value={form.regStateCode} onChange={(e) => updateForm({ regStateCode: e.target.value })} className="ui-select w-full ui-surface">
-                          <option value="">Select</option>
-                          {Object.keys(GST_STATE_BY_CODE || {}).sort().map((code) => (
-                            <option key={code} value={code}>{GST_STATE_BY_CODE[code]}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="ui-label" htmlFor="app-pincode">Pincode</label>
-                        <input id="app-pincode" value={form.regPincode} onChange={(e) => updateForm({ regPincode: e.target.value })} className="ui-input w-full" />
-                      </div>
-                      <div>
-                        <label className="ui-label" htmlFor="app-country-2">Country</label>
-                        <select id="app-country-2" value={form.regCountry} onChange={(e) => updateForm({ regCountry: e.target.value })} className="ui-select w-full ui-surface">
-                          {COUNTRY_OPTIONS.map((x) => (
-                            <option key={x} value={x}>{x}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="text-xs ui-muted">State code is stored internally for GST mappings.</div>
-                  </div>
-                </div>
-              </div>
+                <CompanyProfileForm
+                  form={form}
+                  updateForm={updateForm}
+                  countryOptions={COUNTRY_OPTIONS}
+                  currencyOptions={CURRENCY_OPTIONS}
+                  states={Object.entries(GST_STATE_BY_CODE || {}).sort(([a], [b]) => a.localeCompare(b))}
+                />
               ) : (
                 <CompanyProfileDetails form={form} company={currentCompany} />
               )}
             </div>
           ) : (
-            <TaxCompliancesView db={db} setDb={setDb} currentCompany={currentCompany} />
+            <GstRegistrationsSettings db={db} setDb={setDb} currentCompany={currentCompany} />
           )}
         </div>
       </div>
@@ -10668,7 +11201,7 @@ const GstrExportControl = ({ label, onExport }) => {
   );
 };
 
-const Gstr1Report = ({ db, currentCompany }) => {
+export const LegacyGstr1Report = ({ db, currentCompany }) => {
   const invoices = db.invoices.filter((i) => i.companyId === currentCompany.id);
   const creditNotes = db.creditNotes.filter((c) => c.companyId === currentCompany.id);
 
@@ -10916,6 +11449,147 @@ const Gstr1Report = ({ db, currentCompany }) => {
   );
 };
 
+const gstDocValues = (doc, sign = 1) => ({
+  count: 1,
+  taxable: sign * Number(doc?.subtotal ?? doc?.taxableTotal ?? 0),
+  igst: sign * Number(doc?.igstTotal ?? 0),
+  cgst: sign * Number(doc?.cgstTotal ?? 0),
+  sgst: sign * Number(doc?.sgstTotal ?? 0),
+  cess: sign * Number(doc?.cessTotal ?? 0),
+  tax: sign * Number(doc?.gstTotal ?? 0),
+  total: sign * Number(doc?.total ?? 0),
+});
+
+const addGstValues = (rows) => rows.reduce((sum, row) => ({
+  count: sum.count + Number(row.values?.count || 0),
+  taxable: sum.taxable + Number(row.values?.taxable || 0),
+  igst: sum.igst + Number(row.values?.igst || 0),
+  cgst: sum.cgst + Number(row.values?.cgst || 0),
+  sgst: sum.sgst + Number(row.values?.sgst || 0),
+  cess: sum.cess + Number(row.values?.cess || 0),
+  tax: sum.tax + Number(row.values?.tax || 0),
+  total: sum.total + Number(row.values?.total || 0),
+}), { count: 0, taxable: 0, igst: 0, cgst: 0, sgst: 0, cess: 0, tax: 0, total: 0 });
+
+const Gstr1Report = ({ db, currentCompany, search = '', onSearchChange, onDetailChange }) => {
+  const [selectedSectionKey, setSelectedSectionKey] = useState('');
+  useEffect(() => {
+    onDetailChange?.(Boolean(selectedSectionKey));
+  }, [onDetailChange, selectedSectionKey]);
+  const companyId = currentCompany.id;
+  const eligible = (row) => row?.companyId === companyId && !/draft|cancel/i.test(String(row?.status || ''));
+  const invoices = (db.invoices || []).filter(eligible);
+  const creditNotes = (db.creditNotes || []).filter(eligible);
+  const receipts = (db.payments || []).filter((row) => row?.companyId === companyId && /receipt/i.test(String(row?.voucherType || row?.direction || row?.type || '')));
+  const journals = (db.journalEntries || []).filter((row) => row?.companyId === companyId && !/draft|reversed|cancel/i.test(String(row?.status || '')));
+  const gstinOf = (row) => String(row?.customerGstin || row?.partyGstin || row?.gstin || '').trim();
+  const isExport = (row) => /export/i.test(String(row?.supplyType || row?.taxTreatment || row?.placeOfSupplyType || ''));
+  const isNil = (row) => Number(row?.gstTotal || 0) === 0;
+  const isInterstate = (row) => String(row?.taxType || '').toUpperCase() === 'IGST';
+  const invoiceRow = (doc) => ({ doc, values: gstDocValues(doc, 1) });
+  const noteRow = (doc) => ({ doc, values: gstDocValues(doc, -1) });
+
+  const b2b = invoices.filter((row) => gstinOf(row) && !isExport(row) && !isNil(row)).map(invoiceRow);
+  const exports = invoices.filter(isExport).map(invoiceRow);
+  const nil = invoices.filter(isNil).map(invoiceRow);
+  const b2cl = invoices.filter((row) => !gstinOf(row) && !isNil(row) && !isExport(row) && isInterstate(row) && Number(row.total || 0) > 250000).map(invoiceRow);
+  const b2cs = invoices.filter((row) => !gstinOf(row) && !isNil(row) && !isExport(row) && !b2cl.some((candidate) => candidate.doc === row)).map(invoiceRow);
+  const cdnr = creditNotes.filter((row) => gstinOf(row)).map(noteRow);
+  const cdnur = creditNotes.filter((row) => !gstinOf(row)).map(noteRow);
+  const advanceRows = receipts.filter((row) => Number(row.advanceAmount || 0) > 0).map((doc) => ({ doc, values: { count: 1, taxable: Number(doc.advanceAmount || 0), igst: 0, cgst: 0, sgst: 0, cess: 0, tax: Number(doc.gstTotal || 0), total: Number(doc.advanceAmount || 0) } }));
+  const adjustmentRows = journals.filter((entry) => (entry.lines || []).some((line) => /output\s*(igst|cgst|sgst|gst)|gst\s*output/i.test(String(line.ledgerName || line.accountName || line.description || '')))).map((doc) => {
+    const outputLines = (doc.lines || []).filter((line) => /output\s*(igst|cgst|sgst|gst)|gst\s*output/i.test(String(line.ledgerName || line.accountName || line.description || '')));
+    const tax = outputLines.reduce((sum, line) => sum + Number(line.credit || 0) - Number(line.debit || 0), 0);
+    return { doc, values: { count: 1, taxable: Number(doc.taxableAmount || 0), igst: 0, cgst: 0, sgst: 0, cess: 0, tax, total: Number(doc.amount || tax) } };
+  });
+  const hsnDocs = [...invoices.map(invoiceRow), ...creditNotes.map(noteRow)];
+
+  const sections = [
+    ['b2b', '4A, 4B, 6B, 6C', 'B2B, SEZ and Deemed Export Invoices', b2b],
+    ['b2cl', '5', 'B2C (Large) Invoices', b2cl],
+    ['exports', '6A', 'Exports Invoices', exports],
+    ['b2cs', '7', 'B2C (Others)', b2cs],
+    ['nil', '8A, 8B, 8C, 8D', 'Nil Rated, Exempt and Non-GST Supplies', nil],
+    ['cdnr', '9B', 'Credit / Debit Notes (Registered)', cdnr],
+    ['cdnur', '9B', 'Credit / Debit Notes (Unregistered)', cdnur],
+    ['advance', '11A(1), 11A(2)', 'Tax Liability on Advances Received', advanceRows],
+    ['adjustments', '11B(1), 11B(2)', 'Adjustment of Advances / Journal Corrections', adjustmentRows],
+    ['hsn', '12', 'HSN-wise Summary of Outward Supplies', hsnDocs],
+    ['documents', '13', 'Documents Issued', [...invoices.map(invoiceRow), ...creditNotes.map(noteRow)]],
+    ['eco', '14', 'Supplies made through E-Commerce Operators', invoices.filter((row) => row.ecommerceOperator || row.ecoGstin).map(invoiceRow)],
+    ['section95', '15', 'Supplies under Section 9(5)', invoices.filter((row) => row.section9_5).map(invoiceRow)],
+  ].map(([key, code, label, rows]) => ({ key, code, label, rows, values: addGstValues(rows) }));
+  const selectedSection = sections.find((section) => section.key === selectedSectionKey) || null;
+  const searchText = String(search || '').trim().toLowerCase();
+  const displaySections = searchText ? sections.filter((section) => {
+    if (`${section.code} ${section.label}`.toLowerCase().includes(searchText)) return true;
+    return section.rows.some(({ doc }) => [doc.number, doc.receiptNo, doc.entryNo, doc.customerName, doc.partyName, doc.vendorName, gstinOf(doc)].some((value) => String(value || '').toLowerCase().includes(searchText)));
+  }) : sections;
+
+  const detailModel = (() => {
+    if (!selectedSection) return { columns: [], rows: [] };
+    if (selectedSection.key === 'hsn') {
+      const itemById = new Map((db.items || []).map((item) => [String(item.id), item]));
+      const grouped = new Map();
+      for (const { doc, values } of selectedSection.rows) {
+        const sign = values.total < 0 ? -1 : 1;
+        for (const line of (doc.items || [])) {
+          const item = itemById.get(String(line.itemId || '')) || {};
+          const hsn = String(line.hsnSac || line.hsn || item.hsnSac || item.hsn || 'Unclassified');
+          const rate = Number(line.gstRate ?? item.gstRate ?? 0);
+          const key = `${hsn}|${rate}|${line.unit || item.unit || 'NOS'}`;
+          const rawQuantity = Number(line.quantity || line.qty || 0);
+          const quantity = sign * rawQuantity;
+          const taxable = sign * Number(line.taxableAmount ?? line.amount ?? rawQuantity * Number(line.rate || 0));
+          const current = grouped.get(key) || { hsn, description: line.description || line.name || item.name || '—', uqc: line.unit || item.unit || 'NOS', quantity: 0, rate, taxable: 0, igst: 0, cgst: 0, sgst: 0, cess: 0 };
+          current.quantity += quantity;
+          current.taxable += taxable;
+          current.igst += sign * Number(line.igstAmount || 0);
+          current.cgst += sign * Number(line.cgstAmount || 0);
+          current.sgst += sign * Number(line.sgstAmount || 0);
+          current.cess += sign * Number(line.cessAmount || 0);
+          grouped.set(key, current);
+        }
+      }
+      return { columns: [['hsn','HSN/SAC'],['description','Description'],['uqc','UQC'],['quantity','Total Qty','number'],['rate','GST Rate','number'],['taxable','Taxable Value','money'],['igst','IGST','money'],['cgst','CGST','money'],['sgst','SGST/UTGST','money'],['cess','Cess','money']], rows: [...grouped.values()] };
+    }
+    if (selectedSection.key === 'documents') {
+      const grouped = new Map();
+      for (const { doc } of selectedSection.rows) {
+        const type = creditNotes.includes(doc) ? 'Credit Notes' : 'Invoices';
+        const current = grouped.get(type) || { type, from: doc.number || '', to: doc.number || '', total: 0, cancelled: 0, net: 0 };
+        current.from = current.from || doc.number || '';
+        current.to = doc.number || current.to;
+        current.total += 1;
+        if (/cancel/i.test(String(doc.status || ''))) current.cancelled += 1;
+        current.net = current.total - current.cancelled;
+        grouped.set(type, current);
+      }
+      return { columns: [['type','Document Type'],['from','Serial No. From'],['to','Serial No. To'],['total','Total Issued','number'],['cancelled','Cancelled','number'],['net','Net Issued','number']], rows: [...grouped.values()] };
+    }
+    if (['advance', 'adjustments'].includes(selectedSection.key)) return {
+      columns: [['date','Date'],['number','Voucher No.'],['party','Party'],['place','Place of Supply'],['rate','GST Rate','number'],['taxable','Advance / Adjustment','money'],['igst','IGST','money'],['cgst','CGST','money'],['sgst','SGST/UTGST','money']],
+      rows: selectedSection.rows.map(({ doc, values }) => ({ date: doc.date || '—', number: doc.number || doc.receiptNo || doc.entryNo || '—', party: doc.customerName || doc.partyName || '—', place: doc.placeOfSupplyState || '—', rate: Number(doc.gstRate || 0), ...values })),
+    };
+    return {
+      columns: [['date','Date'],['number','Voucher No.'],['type','Type'],['party','Party'],['gstin','GSTIN'],['place','Place of Supply'],['taxable','Taxable Value','money'],['igst','IGST','money'],['cgst','CGST','money'],['sgst','SGST/UTGST','money'],['cess','Cess','money'],['total','Invoice Amount','money']],
+      rows: selectedSection.rows.map(({ doc, values }) => ({ date: doc.date || '—', number: doc.number || doc.receiptNo || doc.entryNo || '—', type: doc.sourceDocType || (creditNotes.includes(doc) ? 'Credit Note' : 'Invoice'), party: doc.customerName || doc.partyName || doc.vendorName || '—', gstin: gstinOf(doc) || '—', place: doc.placeOfSupplyState || '—', ...values })),
+    };
+  })();
+
+  if (selectedSection) return <div className="space-y-4">
+    <div className="flex flex-wrap items-center gap-3 border-b pb-3 ui-border-c">
+      <div><h3 className="ui-t-sec whitespace-nowrap">{selectedSection.code} — {selectedSection.label}</h3><p className="ui-helper">GSTR-1 · {selectedSection.values.count} voucher{selectedSection.values.count === 1 ? '' : 's'}</p></div>
+    </div>
+    <div className="ui-table-shell overflow-auto" data-fill-viewport style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}><table className="ui-table w-max min-w-full table-auto"><thead><tr>{detailModel.columns.map(([key, label, kind]) => <th key={key} className={`whitespace-nowrap ${kind ? 'text-right' : ''}`}>{label}</th>)}</tr></thead><tbody>{detailModel.rows.length ? detailModel.rows.map((row, index) => <tr key={`${row.number || row.hsn || row.type || 'row'}-${index}`}>{detailModel.columns.map(([key,,kind]) => <td key={key} className={`whitespace-nowrap ${kind ? 'ui-num' : ''} ${kind === 'money' ? 'ui-money' : ''}`}>{kind === 'money' ? formatMoney(row[key], currentCompany) : row[key] ?? '—'}</td>)}</tr>) : <tr><td colSpan={Math.max(1, detailModel.columns.length)} className="py-12 text-center ui-muted">No entries in this section for the selected period.</td></tr>}</tbody></table></div>
+  </div>;
+
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="ui-t-sec">GSTR-1 Return View</h3><p className="ui-helper">Statutory sections calculated from posted vouchers for the selected period.</p></div><div className="relative"><Search size={15} className="ui-muted absolute start-3 top-1/2 -translate-y-1/2" /><input aria-label="Search GST report" className="ui-input w-64 ps-9" placeholder="Search section or voucher…" value={search} onChange={(event) => onSearchChange?.(event.target.value)} /></div></div>
+    <div className="ui-table-shell overflow-auto" data-fill-viewport style={{ '--table-scroll-h': 'calc(100dvh - 15rem)' }}><table className="ui-table w-max min-w-full table-auto"><thead><tr><th className="whitespace-nowrap">Particulars</th><th className="whitespace-nowrap text-right">Vch Count</th><th className="whitespace-nowrap text-right">Taxable Amount</th><th className="whitespace-nowrap text-right">IGST</th><th className="whitespace-nowrap text-right">CGST</th><th className="whitespace-nowrap text-right">SGST/UTGST</th><th className="whitespace-nowrap text-right">Cess</th><th className="whitespace-nowrap text-right">Invoice Amount</th></tr></thead><tbody>{displaySections.map((section) => <tr key={section.key} className="cursor-pointer" onClick={() => setSelectedSectionKey(section.key)}><td className="whitespace-nowrap"><span className="ui-link font-semibold">{section.code} — {section.label}</span></td><td className="ui-num">{section.values.count}</td>{['taxable','igst','cgst','sgst','cess','total'].map((key) => <td key={key} className="ui-money ui-num whitespace-nowrap">{formatMoney(section.values[key], currentCompany)}</td>)}</tr>)}</tbody></table></div>
+  </div>;
+};
+
 const Gstr3bReport = ({ db, currentCompany }) => {
   const invoices = db.invoices.filter((i) => i.companyId === currentCompany.id);
   const creditNotes = db.creditNotes.filter((c) => c.companyId === currentCompany.id);
@@ -10965,29 +11639,7 @@ const Gstr3bReport = ({ db, currentCompany }) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="ui-t-sec">GST - GSTR-3B (Summary)</h3>
-        <GstrExportControl
-          label="Portal JSON"
-          onExport={(period) => {
-            if (!String(currentCompany?.gstin || '').trim()) {
-              notify.error('Set the company GSTIN in Company Profile before exporting a return.');
-              return;
-            }
-            const json = buildGstr3bJson({
-              invoices: db.invoices.filter((i) => i.companyId === currentCompany.id),
-              creditNotes: db.creditNotes.filter((c) => c.companyId === currentCompany.id),
-              bills: db.bills.filter((b) => b.companyId === currentCompany.id),
-              expenses: db.expenses.filter((e) => e.companyId === currentCompany.id),
-              debitNotes: db.debitNotes.filter((d) => d.companyId === currentCompany.id),
-              company: currentCompany,
-              period,
-            });
-            downloadJson(`GSTR3B_${currentCompany.gstin}_${period}.json`, json);
-            notify.success(`GSTR-3B JSON for ${period} downloaded.`);
-          }}
-        />
-      </div>
+      <h3 className="ui-t-sec">GST - GSTR-3B (Summary)</h3>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="ui-surface rounded-xl shadow-sm p-5 border">
@@ -11033,22 +11685,38 @@ const GST_REPORT_OPTIONS = [
   ['reconciliation', 'GST Reconciliation'],
   ['einvoice', 'E-Invoice Register'],
   ['eway', 'E-Way Bill Register'],
-  ['hsn', 'HSN Summary'],
-  ['documents', 'Document Summary'],
 ];
 
-const GstComplianceWorkspace = ({ db, currentCompany, branches = [], initialReport = 'gstr1' }) => {
+const GstComplianceWorkspace = ({ db, currentCompany, branches = [], initialReport = 'gstr1', onBack }) => {
   const today = new Date();
   const fyStart = today.getMonth() < 3 ? today.getFullYear() - 1 : today.getFullYear();
   const [report, setReport] = useState(initialReport);
-  const [financialYear, setFinancialYear] = useState(`${fyStart}-${String(fyStart + 1).slice(-2)}`);
+  const financialYear = `${fyStart}-${String(fyStart + 1).slice(-2)}`;
   const [period, setPeriod] = useState('all');
-  const [branchId, setBranchId] = useState('');
+  const gstinOptions = useMemo(() => {
+    const found = [];
+    const add = (gstin, label) => {
+      const value = String(gstin || '').trim().toUpperCase();
+      if (value && !found.some((item) => item.value === value)) found.push({ value, label: label ? `${value} · ${label}` : value });
+    };
+    add(currentCompany.gstin, currentCompany.name || 'Company');
+    for (const branch of branches) add(branch.gstin || branch.gstIn || branch.registrationGstin, branch.name || branch.branchName);
+    return found;
+  }, [branches, currentCompany.gstin, currentCompany.name]);
+  const [selectedGstin, setSelectedGstin] = useState(() => String(currentCompany.gstin || '').trim().toUpperCase());
   const [search, setSearch] = useState('');
+  const [exportOpen, setExportOpen] = useState(false);
+  const [gstr1DetailOpen, setGstr1DetailOpen] = useState(false);
+  const [gstr1ReportKey, setGstr1ReportKey] = useState(0);
 
   const inScope = useCallback((row) => {
     if (!row || row.companyId !== currentCompany.id) return false;
-    if (branchId && String(row.branchId || '') !== branchId) return false;
+    if (selectedGstin) {
+      const documentGstin = String(row.sellerGstin || row.companyGstin || row.registrationGstin || '').trim().toUpperCase();
+      if (documentGstin && documentGstin !== selectedGstin) return false;
+      const matchingBranchIds = branches.filter((branch) => String(branch.gstin || branch.gstIn || branch.registrationGstin || '').trim().toUpperCase() === selectedGstin).map((branch) => String(branch.id));
+      if (matchingBranchIds.length && row.branchId && !matchingBranchIds.includes(String(row.branchId))) return false;
+    }
     const date = String(row.date || row.invoiceDate || row.billDate || '');
     if (!date) return true;
     const year = Number(date.slice(0, 4));
@@ -11056,20 +11724,15 @@ const GstComplianceWorkspace = ({ db, currentCompany, branches = [], initialRepo
     const fy = month >= 4 ? year : year - 1;
     if (fy !== Number(financialYear.slice(0, 4))) return false;
     return period === 'all' || String(month).padStart(2, '0') === period;
-  }, [branchId, currentCompany.id, financialYear, period]);
+  }, [branches, currentCompany.id, financialYear, period, selectedGstin]);
 
   const scopedDb = useMemo(() => {
     const next = { ...db };
-    for (const key of ['invoices', 'creditNotes', 'bills', 'debitNotes', 'expenses']) {
+    for (const key of ['invoices', 'creditNotes', 'bills', 'debitNotes', 'expenses', 'payments', 'journalEntries']) {
       next[key] = (Array.isArray(db[key]) ? db[key] : []).filter(inScope);
     }
     return next;
   }, [db, inScope]);
-
-  const sumTax = useCallback((rows) => (rows || []).reduce((sum, row) => sum + Number(row.gstTotal || 0), 0), []);
-  const outputGst = sumTax(scopedDb.invoices) - sumTax(scopedDb.creditNotes);
-  const inputGst = sumTax(scopedDb.bills) + sumTax(scopedDb.expenses) - sumTax(scopedDb.debitNotes);
-  const netPayable = Math.max(0, outputGst - inputGst);
 
   const outwardDocs = useMemo(() => [
     ...(scopedDb.invoices || []).map((row) => ({ ...row, complianceType: 'Invoice', sign: 1 })),
@@ -11081,89 +11744,134 @@ const GstComplianceWorkspace = ({ db, currentCompany, branches = [], initialRepo
     ...(scopedDb.debitNotes || []).map((row) => ({ ...row, complianceType: 'Debit Note', sign: -1 })),
   ], [scopedDb]);
 
-  const quick = useMemo(() => {
-    if (report === 'gstr1') {
-      const invoices = scopedDb.invoices || [];
-      return [
-        ['B2B', invoices.filter((r) => String(r.customerGstin || r.gstin || '').trim()).length],
-        ['B2C', invoices.filter((r) => !String(r.customerGstin || r.gstin || '').trim()).length],
-        ['Exports', invoices.filter((r) => /export/i.test(String(r.supplyType || r.taxTreatment || ''))).length],
-        ['Credit/Debit Notes', (scopedDb.creditNotes || []).length],
-        ['Nil/Exempt', invoices.filter((r) => Number(r.gstTotal || 0) === 0).length],
-      ];
-    }
-    if (report === 'itc') return [['Purchase bills', (scopedDb.bills || []).length], ['Expenses', (scopedDb.expenses || []).length], ['Eligible ITC', formatMoney(inputGst, currentCompany)]];
-    if (report === 'reconciliation') return [['Books ITC', formatMoney(inputGst, currentCompany)], ['Matched', 0], ['Needs review', inwardDocs.length]];
-    if (report === 'hsn') return [['Documents', outwardDocs.length], ['Taxable value', formatMoney(outwardDocs.reduce((s, r) => s + r.sign * Number(r.subtotal || 0), 0), currentCompany)]];
-    return [['Documents', report === 'gstr3b' ? outwardDocs.length + inwardDocs.length : outwardDocs.length], ['Output GST', formatMoney(outputGst, currentCompany)], ['Input GST', formatMoney(inputGst, currentCompany)]];
-  }, [currentCompany, inputGst, inwardDocs.length, outputGst, outwardDocs, report, scopedDb]);
-
   const rows = report === 'itc' || report === 'reconciliation' ? inwardDocs : outwardDocs;
   const visibleRows = rows.filter((row) => !search || [row.number, row.invoiceNumber, row.billNumber, row.customerName, row.vendorName, row.reference].some((v) => String(v || '').toLowerCase().includes(search.toLowerCase())));
   const selectedLabel = GST_REPORT_OPTIONS.find(([key]) => key === report)?.[1] || 'GST Report';
+  const reportColumns = report === 'itc' ? [
+    { key: 'party', label: 'Party name', value: (row) => row.vendorName || row.partyName || row.customerName || '—' },
+    { key: 'gstin', label: 'GSTN', value: (row) => row.vendorGstin || row.partyGstin || row.gstin || '—' },
+    { key: 'number', label: 'Invoice number', value: (row) => row.refNo || row.invoiceNumber || row.billNumber || row.number || '—' },
+    { key: 'date', label: 'Inv date', value: (row) => row.refDate || row.invoiceDate || row.billDate || row.date || '—' },
+    { key: 'total', label: 'Inv Value', money: true, value: (row) => Number(row.total || 0) * row.sign },
+    { key: 'taxable', label: 'Taxable value', money: true, value: (row) => Number(row.subtotal || row.taxableTotal || 0) * row.sign },
+    { key: 'cgst', label: 'CGST', money: true, value: (row) => Number(row.cgstTotal || 0) * row.sign },
+    { key: 'sgst', label: 'SGST', money: true, value: (row) => Number(row.sgstTotal || 0) * row.sign },
+    { key: 'igst', label: 'IGST', money: true, value: (row) => Number(row.igstTotal || 0) * row.sign },
+  ] : [
+    { key: 'type', label: 'Type', value: (row) => row.complianceType },
+    { key: 'number', label: 'Document No.', value: (row) => row.number || row.invoiceNumber || row.billNumber || '—' },
+    { key: 'date', label: 'Date', value: (row) => row.date || '—' },
+    { key: 'party', label: 'Party', value: (row) => row.customerName || row.vendorName || '—' },
+    { key: 'gstin', label: 'GSTIN', value: (row) => row.customerGstin || row.vendorGstin || row.gstin || '—' },
+    { key: 'taxable', label: 'Taxable Value', money: true, value: (row) => Number(row.subtotal || row.taxableTotal || 0) * row.sign },
+    { key: 'gst', label: 'GST', money: true, value: (row) => Number(row.gstTotal || 0) * row.sign },
+    { key: 'total', label: 'Total Amount', money: true, value: (row) => Number(row.total || 0) * row.sign },
+  ];
 
-  const exportCurrent = () => {
-    const header = ['Type', 'Number', 'Date', 'Party', 'GSTIN', 'Taxable Value', 'GST', 'Total'];
-    const body = visibleRows.map((r) => [r.complianceType, r.number || r.invoiceNumber || r.billNumber || '', r.date || '', r.customerName || r.vendorName || '', r.customerGstin || r.vendorGstin || r.gstin || '', Number(r.subtotal || r.taxableTotal || 0) * r.sign, Number(r.gstTotal || 0) * r.sign, Number(r.total || 0) * r.sign]);
-    const csv = [header, ...body].map((line) => line.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${selectedLabel.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  const exportCurrent = async () => {
+    if (report === 'gstr1') {
+      if (!selectedGstin) {
+        notify.error('Select a GSTIN before exporting the GSTR-1 workbook.');
+        return;
+      }
+      if (period === 'all') {
+        notify.error('Select a filing month before exporting the GSTR-1 workbook.');
+        return;
+      }
+      const month = Number(period);
+      const filingYear = month >= 4 ? fyStart : fyStart + 1;
+      const portalPeriod = `${period}${filingYear}`;
+      const monthName = new Date(filingYear, month - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+      await exportGstr1Excel({ db: scopedDb, company: { ...currentCompany, gstin: selectedGstin }, gstin: selectedGstin, periodLabel: monthName, portalPeriod });
+      return;
+    }
+    await exportListXlsx({
+      fileName: selectedLabel.replace(/[^a-z0-9]+/gi, '-').toLowerCase(),
+      sheetName: selectedLabel,
+      subtitle: period === 'all' ? financialYear : period,
+      columns: reportColumns.map((column) => ({ key: column.key, label: column.label, type: column.money ? 'number' : 'text', align: column.money ? 'right' : 'left', value: column.value })),
+      rows: visibleRows,
+    });
+  };
+
+  const exportPortalJson = () => {
+    if (!selectedGstin) {
+      notify.error('Select a GSTIN before exporting GST Portal JSON.');
+      return;
+    }
+    if (period === 'all') {
+      notify.error('Select a filing month before exporting GST Portal JSON.');
+      return;
+    }
+    if (report !== 'gstr1' && report !== 'gstr3b') {
+      notify.error('GST Portal JSON is available for GSTR-1 and GSTR-3B.');
+      return;
+    }
+
+    const month = Number(period);
+    const filingYear = month >= 4 ? fyStart : fyStart + 1;
+    const portalPeriod = `${period}${filingYear}`;
+    const exportCompany = { ...currentCompany, gstin: selectedGstin };
+    const json = report === 'gstr1'
+      ? buildGstr1Json({
+          invoices: scopedDb.invoices || [],
+          creditNotes: scopedDb.creditNotes || [],
+          items: db.items || [],
+          company: exportCompany,
+          period: portalPeriod,
+        })
+      : buildGstr3bJson({
+          invoices: scopedDb.invoices || [],
+          creditNotes: scopedDb.creditNotes || [],
+          bills: scopedDb.bills || [],
+          expenses: scopedDb.expenses || [],
+          debitNotes: scopedDb.debitNotes || [],
+          company: exportCompany,
+          period: portalPeriod,
+        });
+    const returnName = report === 'gstr1' ? 'GSTR1' : 'GSTR3B';
+    downloadJson(`${returnName}_${selectedGstin}_${portalPeriod}.json`, json);
+    notify.success(`${returnName} GST Portal JSON downloaded.`);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h1 className="ui-t-page">GST</h1><p className="ui-muted text-sm">View, analyse and prepare your GST returns</p></div>
-        <div className="flex flex-wrap gap-2">
-          <select aria-label="Financial Year" className="ui-select" value={financialYear} onChange={(e) => setFinancialYear(e.target.value)}>
-            {[fyStart - 2, fyStart - 1, fyStart, fyStart + 1].map((year) => <option key={year} value={`${year}-${String(year + 1).slice(-2)}`}>FY {year}-{String(year + 1).slice(-2)}</option>)}
-          </select>
-          <select aria-label="Period" className="ui-select" value={period} onChange={(e) => setPeriod(e.target.value)}>
-            <option value="all">All periods</option>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-[rgb(var(--heading-bg))] px-3 py-2 ui-border-c">
+        <div className="flex min-w-0 items-center gap-2"><button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => { if (report === 'gstr1' && gstr1DetailOpen) setGstr1ReportKey((value) => value + 1); else onBack?.(); }}><ArrowLeft size={15} /> Back</button><h1 className="ui-t-page">GST</h1></div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <select id="gst-report-select" aria-label="Select report" className="ui-select ui-ctl-compact w-64 font-semibold" value={report} onChange={(e) => { setGstr1DetailOpen(false); setReport(e.target.value); }}>{GST_REPORT_OPTIONS.map(([key, label]) => <option key={key} value={key}>{`Select report · ${label}`}</option>)}</select>
+          <select id="gst-period" aria-label="Period" className="ui-select ui-ctl-compact w-40" value={period} onChange={(e) => setPeriod(e.target.value)}>
+            <option value="all">Period · All periods</option>
             {['April','May','June','July','August','September','October','November','December','January','February','March'].map((name, index) => {
               const month = ((index + 3) % 12) + 1;
-              return <option key={name} value={String(month).padStart(2, '0')}>{name}</option>;
+              return <option key={name} value={String(month).padStart(2, '0')}>{`Period · ${name}`}</option>;
             })}
           </select>
+          <select id="gst-gstin-select" aria-label="GSTIN" className="ui-select ui-ctl-compact ui-mono w-56" value={selectedGstin} onChange={(e) => setSelectedGstin(e.target.value)}>{gstinOptions.length ? gstinOptions.map((item) => <option key={item.value} value={item.value}>{`GSTIN · ${item.label}`}</option>) : <option value="">GSTIN · Not configured</option>}</select>
+          <div className="relative">
+            <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen((open) => !open)}><Download size={15} /> Export <ChevronDown size={14} /></button>
+            {exportOpen ? <div role="menu" className="absolute end-0 top-[calc(100%+0.35rem)] z-40 w-56 overflow-hidden rounded-lg border bg-white p-1 shadow-lg ui-border-c">
+              <button type="button" role="menuitem" className="w-full rounded-md px-3 py-2 text-start text-sm font-medium hover:bg-slate-100" onClick={() => { setExportOpen(false); exportCurrent(); }}>
+                <span className="block">Export Excel</span><span className="block text-xs font-normal ui-muted">{report === 'gstr1' ? 'Complete multi-sheet filing workbook' : 'Current report data'}</span>
+              </button>
+              <button type="button" role="menuitem" className="w-full rounded-md px-3 py-2 text-start text-sm font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-45" disabled={report !== 'gstr1' && report !== 'gstr3b'} title={report !== 'gstr1' && report !== 'gstr3b' ? 'Available for GSTR-1 and GSTR-3B' : 'GST Portal compatible JSON'} onClick={() => { setExportOpen(false); exportPortalJson(); }}>
+                <span className="block">GST Portal JSON</span><span className="block text-xs font-normal ui-muted">GSTR-1 / GSTR-3B upload file</span>
+              </button>
+            </div> : null}
+          </div>
         </div>
       </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ['Output GST', outputGst, `${outwardDocs.length} outward documents`, 'var(--ov-blue-wash)'],
-          ['Input GST', inputGst, `${inwardDocs.length} inward documents`, 'var(--ov-green-wash)'],
-          ['Net GST Payable', netPayable, outputGst > inputGst ? 'Payable after available ITC' : 'No net amount payable', 'var(--ov-amber-wash)'],
-          ['ITC Available', inputGst, 'Based on purchase bills and expenses', 'var(--ov-violet-wash)'],
-        ].map(([label, value, note, tone]) => <div key={label} className="ui-card p-4" style={{ backgroundColor: `rgb(${tone})` }}><div className="ui-t-label">{label}</div><div className="mt-1 ui-money-lg">{formatMoney(value, currentCompany)}</div><div className="mt-1 text-xs ui-muted">{note}</div></div>)}
-      </div>
-
-      <section className="ui-card p-3">
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-[17rem] flex-1 sm:flex-none"><label className="ui-label" htmlFor="gst-report-select">Select Report</label><select id="gst-report-select" className="ui-select w-full font-semibold" value={report} onChange={(e) => setReport(e.target.value)}>{GST_REPORT_OPTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div>
-          <div><label className="ui-label" htmlFor="gst-branch">Branch</label><select id="gst-branch" className="ui-select" value={branchId} onChange={(e) => setBranchId(e.target.value)}><option value="">All branches</option>{branches.map((branch) => <option key={branch.id} value={String(branch.id)}>{branch.name}</option>)}</select></div>
-          <div><label className="ui-label" htmlFor="gst-gstin">GSTIN</label><input id="gst-gstin" className="ui-input ui-mono w-44" value={currentCompany.gstin || 'Not configured'} readOnly /></div>
-          <button type="button" className="ui-btn ui-btn-primary">Apply</button>
-        </div>
-      </section>
-
-      <div className="flex flex-wrap gap-2">{quick.map(([label, value]) => <div key={label} className="ui-card min-w-36 px-4 py-3"><div className="text-xs ui-muted">{label}</div><div className="mt-0.5 ui-money">{value}</div></div>)}</div>
 
       <section className="ui-card overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b ui-border-c p-3">
+        {report !== 'gstr1' ? <div className="flex flex-wrap items-center justify-between gap-2 border-b ui-border-c px-3 py-2">
           <div><h2 className="ui-t-sec">{selectedLabel}</h2><p className="text-xs ui-muted">Selected GST report for the current compliance period</p></div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative"><Search size={15} className="ui-muted absolute start-3 top-1/2 -translate-y-1/2" /><input aria-label="Search GST report" className="ui-input w-64 ps-9" placeholder="Search number, party, reference…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-            <button type="button" className="ui-btn ui-btn-secondary"><SlidersHorizontal size={15} /> Layout</button>
-            <button type="button" className="ui-btn ui-btn-secondary" onClick={exportCurrent}><Download size={15} /> Export</button>
           </div>
-        </div>
-        <div className="p-3">
-          {report === 'gstr1' ? <Gstr1Report db={scopedDb} currentCompany={currentCompany} /> : report === 'gstr3b' ? <Gstr3bReport db={scopedDb} currentCompany={currentCompany} /> : report === 'reconciliation' ? <Gstr2bReco db={scopedDb} currentCompany={currentCompany} /> : (
-            <div className="overflow-auto"><table className="ui-table w-full"><thead><tr><th className="ui-th">Type</th><th className="ui-th">Document No.</th><th className="ui-th ui-col-h-center">Date</th><th className="ui-th">Party</th><th className="ui-th">GSTIN</th><th className="ui-th ui-num">Taxable Value</th><th className="ui-th ui-num">GST</th><th className="ui-th ui-num">Total Amount</th></tr></thead><tbody>{visibleRows.length ? visibleRows.map((row, index) => <tr key={`${row.id || row.number}-${index}`} className="ui-hover-sunken cursor-pointer"><td className="ui-td">{row.complianceType}</td><td className="ui-td ui-link">{row.number || row.invoiceNumber || row.billNumber || '—'}</td><td className="ui-td">{row.date || '—'}</td><td className="ui-td">{row.customerName || row.vendorName || '—'}</td><td className="ui-td ui-mono">{row.customerGstin || row.vendorGstin || row.gstin || '—'}</td><td className="ui-td ui-num">{formatMoney(Number(row.subtotal || row.taxableTotal || 0) * row.sign, currentCompany)}</td><td className="ui-td ui-num">{formatMoney(Number(row.gstTotal || 0) * row.sign, currentCompany)}</td><td className="ui-td ui-num">{formatMoney(Number(row.total || 0) * row.sign, currentCompany)}</td></tr>) : <tr><td colSpan="8" className="px-4 py-12 text-center ui-muted">No entries match this report and period.</td></tr>}</tbody><tfoot><tr className="font-bold"><td className="ui-td" colSpan="5">Total ({visibleRows.length})</td><td className="ui-td ui-num">{formatMoney(visibleRows.reduce((s, r) => s + Number(r.subtotal || r.taxableTotal || 0) * r.sign, 0), currentCompany)}</td><td className="ui-td ui-num">{formatMoney(visibleRows.reduce((s, r) => s + Number(r.gstTotal || 0) * r.sign, 0), currentCompany)}</td><td className="ui-td ui-num">{formatMoney(visibleRows.reduce((s, r) => s + Number(r.total || 0) * r.sign, 0), currentCompany)}</td></tr></tfoot></table></div>
+        </div> : null}
+        <div className="p-2">
+          {report === 'gstr1' ? <Gstr1Report key={gstr1ReportKey} db={scopedDb} currentCompany={currentCompany} search={search} onSearchChange={setSearch} onDetailChange={setGstr1DetailOpen} /> : report === 'gstr3b' ? <Gstr3bReport db={scopedDb} currentCompany={currentCompany} /> : report === 'reconciliation' ? <Gstr2bReco db={scopedDb} currentCompany={currentCompany} /> : (
+            <div className="ui-table-shell overflow-auto" data-fill-viewport style={{ '--table-scroll-h': 'calc(100dvh - 13rem)' }}><table className="ui-table w-max min-w-full table-auto"><thead><tr>{reportColumns.map((column) => <th key={column.key} className={`ui-th whitespace-nowrap ${column.money ? 'ui-num' : ''}`}>{column.label}</th>)}</tr></thead><tbody>{visibleRows.length ? visibleRows.map((row, index) => <tr key={`${row.id || row.number}-${index}`} className="ui-hover-sunken cursor-pointer">{reportColumns.map((column) => { const value = column.value(row); return <td key={column.key} className={`ui-td whitespace-nowrap ${column.money ? 'ui-num ui-money' : column.key === 'gstin' ? 'ui-mono' : ''}`}>{column.money ? formatMoney(value, currentCompany) : value}</td>; })}</tr>) : <tr><td colSpan={reportColumns.length} className="px-4 py-12 text-center ui-muted">No entries match this report and period.</td></tr>}</tbody></table></div>
           )}
         </div>
       </section>
@@ -11183,7 +11891,7 @@ const AppShell = () => {
   const warehousesFeatureEnabled = isEnabled('warehouses');
   /* Kept for the effect of mounting the hook — it is what applies the stored
      theme to the document. The switch itself is in the platform bar. */
-  useTheme();
+  const { theme, toggle: toggleTheme } = useTheme();
   const { density, set: setDensity } = useDensity();
   /*
    * The shell decides this, and it has already decided it — Accounting is not
@@ -11399,6 +12107,18 @@ const AppShell = () => {
   /* The TDS compliance stores follow the same rule as every master: local
      is the working copy, the server is where every device meets. */
   useTdsSync(db, setDb, isAuthenticated ? currentCompany : null);
+  useEffect(() => {
+    if (!isAuthenticated || !currentCompany?.id) return;
+    setDb((previous) => reconcileExpenseTdsTransactions(previous, currentCompany));
+  }, [
+    isAuthenticated,
+    currentCompany,
+    db.expenses,
+    db.vendors,
+    db.chartOfAccounts,
+    db.tdsTransactions,
+    setDb,
+  ]);
 
 
   /*
@@ -11442,6 +12162,43 @@ const AppShell = () => {
 
   const [activeWarehouseId, setActiveWarehouseId] = useState(() => String(localStorage.getItem('activeWarehouseId') || ''));
   const [activeBranchId, setActiveBranchId] = useState(() => String(localStorage.getItem('activeBranchId') || localStorage.getItem('branchId') || ''));
+  const financialYearCollections = useMemo(() => [
+    'invoices', 'creditNotes', 'bills', 'debitNotes', 'expenses', 'receipts', 'payments',
+    'journalEntries', 'bankTransactions', 'estimates', 'purchaseOrders', 'salesOrders',
+    'deliveryChallans', 'stockTransfers', 'stockAdjustments', 'tdsTransactions', 'tdsChallans',
+  ], []);
+  const fiscalYearStartMonth = useMemo(() => {
+    const configured = String(currentCompany?.financialYearStart || currentCompany?.fiscalYearStart || '').trim();
+    const month = Number(configured.slice(5, 7));
+    return Number.isFinite(month) && month >= 1 && month <= 12 ? month : 4;
+  }, [currentCompany?.financialYearStart, currentCompany?.fiscalYearStart]);
+  const financialYearForDate = useCallback((value) => {
+    const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return '';
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return '';
+    const start = month >= fiscalYearStartMonth ? year : year - 1;
+    return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+  }, [fiscalYearStartMonth]);
+  const financialYearOptions = useMemo(() => {
+    const years = new Set();
+    financialYearCollections.forEach((collection) => {
+      (Array.isArray(db?.[collection]) ? db[collection] : []).forEach((row) => {
+        if (Number(row?.companyId) !== Number(currentCompany?.id)) return;
+        const year = financialYearForDate(row?.date || row?.transactionDate || row?.voucherDate || row?.invoiceDate || row?.challanDate || row?.orderDate);
+        if (year) years.add(year);
+      });
+    });
+    return [...years].sort((a, b) => Number(b.slice(0, 4)) - Number(a.slice(0, 4)));
+  }, [db, currentCompany?.id, financialYearCollections, financialYearForDate]);
+  const [activeFinancialYear, setActiveFinancialYear] = useState(() => String(localStorage.getItem('activeFinancialYear') || ''));
+  const displayedFinancialYear = financialYearOptions.includes(activeFinancialYear) ? activeFinancialYear : financialYearOptions[0] || '';
+  useEffect(() => {
+    if (!displayedFinancialYear || displayedFinancialYear === activeFinancialYear) return;
+    setActiveFinancialYear(displayedFinancialYear);
+    localStorage.setItem('activeFinancialYear', displayedFinancialYear);
+  }, [displayedFinancialYear, activeFinancialYear]);
   const [warehouses, setWarehouses] = useState([]);
   const [warehousesLoading, setWarehousesLoading] = useState(false);
   const [warehousesError, setWarehousesError] = useState('');
@@ -11594,31 +12351,38 @@ const AppShell = () => {
     return new Set((Array.isArray(warehousesForUser) ? warehousesForUser : []).map((w) => String(w?.id)));
   }, [warehousesForUser]);
 
-  // Ensure active branch is within allowed branches (non-admin users).
+  // Establish the branch before branch-scoped permissions and masters load.
+  // This also covers restored owner/admin sessions: /auth/me returns every
+  // allowed branch, but those sessions previously skipped this effect and
+  // remained without x-branch-id until the user signed out and back in.
   useEffect(() => {
     if (!isAuthenticated) return;
-    if (!hasBranchRestriction) return;
     // authCtx starts as { loading: false, data: null }, so "not loading" is not
     // the same as "answered". Acting before /auth/me returns would clear the
     // active branch on every page load, because allowedBranchIds is still empty.
     if (authCtx.loading || !authCtx.data) return;
 
     const existing = String(localStorage.getItem('activeBranchId') || '').trim();
-    if (existing && allowedBranchIdSet.has(existing)) return;
+    if (existing && allowedBranchIdSet.has(existing)) {
+      if (String(activeBranchId || '') !== existing) setActiveBranchId(existing);
+      return;
+    }
 
     const firstAllowed = allowedBranchIds.length ? String(allowedBranchIds[0]) : '';
     if (!firstAllowed) {
       localStorage.removeItem('activeBranchId');
       localStorage.removeItem('branchId');
+      setActiveBranchId('');
       return;
     }
     localStorage.setItem('activeBranchId', firstAllowed);
     localStorage.setItem('branchId', firstAllowed);
+    setActiveBranchId(firstAllowed);
     if (typeof reloadWarehouses === 'function') reloadWarehouses();
-  }, [isAuthenticated, hasBranchRestriction, authCtx.loading, allowedBranchIds, allowedBranchIdSet, reloadWarehouses]);
+  }, [isAuthenticated, authCtx.loading, authCtx.data, allowedBranchIds, allowedBranchIdSet, activeBranchId, reloadWarehouses]);
 
   // Filter local DB vouchers/transfers by allowed warehouses/branches for non-admin users.
-  const dbForUser = useMemo(() => {
+  const dbForAccess = useMemo(() => {
     const activeWh = String(activeWarehouseId || '').trim();
     const activeBr = String(activeBranchId || '').trim();
     const scoped = Boolean(activeWh) || Boolean(activeBr);
@@ -11709,7 +12473,36 @@ const AppShell = () => {
     warehouses,
   ]);
 
+  // The header FY is a real book scope. Only transaction collections are
+  // narrowed; customers, ledgers, items and settings remain fully available
+  // so an older year can still resolve every name and account it refers to.
+  const dbForUser = useMemo(() => {
+    const scoped = { ...dbForAccess, branches: branchesForUser, warehouses: warehousesForUser };
+    if (!displayedFinancialYear) return scoped;
+    financialYearCollections.forEach((collection) => {
+      const rows = dbForAccess?.[collection];
+      if (!Array.isArray(rows)) return;
+      scoped[collection] = rows.filter((row) => {
+        if (Number(row?.companyId) !== Number(currentCompany?.id)) return true;
+        const year = financialYearForDate(row?.date || row?.transactionDate || row?.voucherDate || row?.invoiceDate || row?.challanDate || row?.orderDate);
+        return year === displayedFinancialYear;
+      });
+    });
+    return scoped;
+  }, [dbForAccess, branchesForUser, warehousesForUser, currentCompany?.id, displayedFinancialYear, financialYearCollections, financialYearForDate]);
+
   const [active, setActive] = useState('dashboard');
+  const dedicatedSettingsMode = active === 'settings' || isSettingsKey(active);
+  const dedicatedReportsMode = active === 'reports';
+  const dedicatedMasterDataMode = MASTER_DATA_KEYS.has(active);
+  const dedicatedWorkspaceMode = dedicatedSettingsMode || dedicatedReportsMode || dedicatedMasterDataMode;
+  const workspaceReturnRef = useRef('dashboard');
+  useEffect(() => {
+    if (!dedicatedWorkspaceMode) workspaceReturnRef.current = active || 'dashboard';
+  }, [active, dedicatedWorkspaceMode]);
+  const exitWorkspace = useCallback(() => {
+    setActive(workspaceReturnRef.current || 'dashboard');
+  }, []);
 
   /*
    * The screen before this one, for the sub-screens that are reached from a
@@ -11832,7 +12625,7 @@ const AppShell = () => {
       return keys;
     }, [reportSections]);
 
-  const [modal, setModal] = useState({ content: null, title: 'Form', maxWidthClass: 'max-w-4xl' });
+  const [modal, setModal] = useState({ content: null, title: 'Form', maxWidthClass: 'max-w-4xl', headerActions: null, showCloseIcon: true });
   const [invoiceEditor, setInvoiceEditor] = useState({ open: false, initial: null });
   const [estimateEditor, setEstimateEditor] = useState({ open: false, initial: null });
   const [receiptEditor, setReceiptEditor] = useState({ open: false });
@@ -11897,7 +12690,7 @@ const AppShell = () => {
     return `${values.filter(Boolean).length}/${values.length}`;
   }, [currentCompany?.profile?.features]);
   const gstStateLabel =
-    (currentCompany?.profile?.taxCompliances?.gstEnabled ?? currentCompany?.gstEnabled ?? true) !== false ? 'GST on' : 'GST off';
+    (currentCompany?.profile?.taxCompliances?.gstEnabled ?? currentCompany?.gstEnabled ?? currentCompany?.gstin) ? 'GST on' : 'GST off';
   const emailStateLabel = currentCompany?.profile?.emailSettings?.fromAddress ? '' : 'Not set';
 
   const navModel = useMemo(
@@ -11921,17 +12714,7 @@ const AppShell = () => {
           { key: 'deliveryChallans', label: 'Delivery Challans', icon: Truck, perm: 'SALES::Invoices::VIEW', feature: 'deliveryChallans' },
           { key: 'creditNotes', label: 'Sales Returns', icon: Receipt, perm: 'SALES::Credit Notes::VIEW', feature: 'creditNotes' },
           { key: 'recurringInvoices', label: 'Recurring', icon: RefreshCw, perm: 'SALES::Invoices::VIEW', feature: 'recurringInvoices' },
-        ],
-      },
-      {
-        type: 'group',
-        key: 'crmMenu',
-        label: 'CRM',
-        tone: 'crm',
-        icon: Users,
-        items: [
           { key: 'salesmen', label: 'Salesmen', icon: Users, perm: 'SALES::Invoices::VIEW', feature: 'salesmen' },
-          { key: 'paymentReminders', label: 'Payment Reminders', icon: Bell, perm: 'SALES::Receipts::VIEW', feature: 'paymentReminders' },
         ],
       },
       {
@@ -11945,6 +12728,7 @@ const AppShell = () => {
           { key: 'purchaseOverview', label: 'Overview', icon: BarChart3, perm: 'PURCHASE::Bills::VIEW' },
           { key: 'vendors', label: 'Vendors', icon: Truck, perm: 'MASTERS::Vendors::VIEW' },
           { key: 'bills', label: 'Bills', icon: FileStack, perm: 'PURCHASE::Bills::VIEW' },
+          { key: 'expenses', label: 'Expenses', icon: PhExpenses, perm: 'EXPENSES::Expenses::VIEW', feature: 'expenses' },
           { key: 'payments', label: 'Payments', icon: NotebookPen, perm: 'PURCHASE::Payments::VIEW', feature: 'standaloneReceiptsPayments' },
           { key: 'purchaseOrders', label: 'Purchase Orders', icon: ShoppingCart, perm: 'PURCHASE::Purchase Orders::VIEW', feature: 'purchaseOrders' },
           { key: 'debitNotes', label: 'Purchase Returns', icon: NotebookPen, perm: 'PURCHASE::Debit Notes::VIEW', feature: 'debitNotes' },
@@ -11975,9 +12759,6 @@ const AppShell = () => {
           { key: 'bankReco', label: 'Reconciliation', icon: ListChecks, perm: 'CASHBANK::Cash & Bank::VIEW' },
         ],
       },
-      // A group of one is a menu that opens onto itself. With the duplicate
-      // Payments entry gone, Expenses is a destination, not a section.
-      { type: 'item', key: 'expenses', label: 'Expenses', icon: PhExpenses, ph: true, tone: 'expenses', perm: 'EXPENSES::Expenses::VIEW', feature: 'expenses' },
       {
         type: 'group',
         key: 'inventoryMenu',
@@ -12018,8 +12799,8 @@ const AppShell = () => {
       },
       { type: 'item', key: 'reports', label: 'Reports', icon: PhReports, ph: true, tone: 'reports', permAny: ['REPORTS::Trial Balance::VIEW','REPORTS::Profit & Loss::VIEW','REPORTS::Balance Sheet::VIEW','REPORTS::Cash Flow::VIEW','REPORTS::Sales Reports::VIEW','REPORTS::GSTR-1::VIEW','REPORTS::GSTR-3B::VIEW'] },
       {
-        type: 'group',
-        key: 'mdmMenu',
+        type: 'item',
+        key: 'mdm',
         label: 'Master Data',
         tone: 'masterdata',
         icon: PhMaster,
@@ -12033,9 +12814,10 @@ const AppShell = () => {
            * whichever one you happened to click.
            */
           { key: 'companies', label: 'Companies', icon: Building2, perm: 'SETTINGS::Company Profile::VIEW', feature: 'companyGroups' },
-          { key: 'items', label: 'Items', icon: Tags, perm: 'MASTERS::Items::VIEW' },
-          { key: 'uoms', label: 'Units', icon: Boxes, perm: 'MASTERS::Items::VIEW' },
+          { type: 'subgroup', label: 'Items' },
+          { key: 'items', label: 'Item List', icon: Tags, perm: 'MASTERS::Items::VIEW' },
           { key: 'itemCategories', label: 'Item Categories', icon: Tags, perm: 'MASTERS::Items::VIEW' },
+          { key: 'uoms', label: 'Units', icon: Boxes, perm: 'MASTERS::Items::VIEW' },
           { key: 'priceLists', label: 'Price Lists', icon: Tags, perm: 'MASTERS::Items::VIEW', feature: 'priceLists' },
           { key: 'bankCash', label: 'Chart of Accounts', icon: Building2, perm: 'ACCOUNTING::Chart of Accounts::VIEW' },
           { key: 'gstRates', label: 'GST Rates', icon: BadgePercent, perm: 'MASTERS::GST Rates::VIEW' },
@@ -12135,7 +12917,7 @@ const AppShell = () => {
       if (HUB_SCREENS.has(want)) return featureList.every((feature) => isEnabled(feature));
       if (visibleSettings({ can, isEnabled }).some((item) => String(item.key) === want)) return true;
       for (const node of navModel || []) {
-        const candidates = node.type === 'group' ? node.items || [] : [node];
+        const candidates = node.items ? [node, ...(node.items || [])] : [node];
         const item = candidates.find((candidate) => String(candidate?.key) === want);
         if (!item) continue;
         return (
@@ -12446,6 +13228,7 @@ const AppShell = () => {
     for (const entry of visibleNav) {
       if (entry.type === 'group') {
         for (const item of entry.items) {
+          if (item.type === 'subgroup') continue;
           out.push({ key: item.key, label: item.label, group: entry.label, icon: item.icon });
         }
       } else {
@@ -12463,7 +13246,7 @@ const AppShell = () => {
   const reachableScreens = useMemo(() => {
     const keys = new Set();
     for (const entry of visibleNav) {
-      if (entry.type === 'group') entry.items.forEach((i) => keys.add(i.key));
+      if (entry.type === 'group') entry.items.forEach((i) => { if (i.type !== 'subgroup') keys.add(i.key); });
       else keys.add(entry.key);
     }
     return keys;
@@ -12525,7 +13308,8 @@ const AppShell = () => {
         }
       } catch (e) {
         if (cancelled) return;
-        setWarehouses([]);
+        // Keep the last successful reference data visible. A transient API
+        // failure must not make every warehouse picker appear unconfigured.
         setWarehousesError(String(e?.message || e));
       } finally {
         // Guarded rather than returned from: a return inside finally discards
@@ -12602,6 +13386,7 @@ const AppShell = () => {
     setActiveWarehouseId(id);
   }, [activeWarehouseId, isAuthenticated, warehousesFeatureEnabled, warehousesForUser, warehousesLoading]);
 
+  // eslint-disable-next-line no-unused-vars
   const setActiveWarehouse = useCallback(
     (warehouseId) => {
       const nextId = warehouseId ? String(warehouseId) : '';
@@ -12621,6 +13406,7 @@ const AppShell = () => {
 
   // Warehouses belonging to the branch currently in the header. A branch with
   // one warehouse needs no picker; the transfer forms still read the active id.
+  // eslint-disable-next-line no-unused-vars
   const warehousesForActiveBranch = useMemo(() => {
     const list = Array.isArray(warehousesForUser) ? warehousesForUser : [];
     const bid = String(activeBranchId || '').trim();
@@ -12634,6 +13420,7 @@ const AppShell = () => {
    * warehouse selection is dropped (the old one belongs to the old branch) and
    * the warehouse list is refetched for the new branch.
    */
+  // eslint-disable-next-line no-unused-vars
   const setActiveBranch = useCallback(
     (branchId) => {
       const nextId = branchId ? String(branchId) : '';
@@ -12821,13 +13608,15 @@ const AppShell = () => {
 
   const openModal = (content, opts = {}) => {
     if (!content) {
-      setModal({ content: null, title: 'Form', maxWidthClass: 'max-w-4xl' });
+      setModal({ content: null, title: 'Form', maxWidthClass: 'max-w-4xl', headerActions: null, showCloseIcon: true });
       return;
     }
     setModal({
       content,
       title: opts.title || 'Form',
       maxWidthClass: opts.maxWidthClass || 'max-w-4xl',
+      headerActions: opts.headerActions || null,
+      showCloseIcon: opts.showCloseIcon !== false,
     });
   };
 
@@ -12866,6 +13655,7 @@ const AppShell = () => {
             isEnabled={isEnabled}
             onOpenCategory={openSettingsCategory}
             onOpenSetting={(key) => setActive(key)}
+            onExit={exitWorkspace}
           />
         );
       case 'dashboard':
@@ -12957,8 +13747,8 @@ const AppShell = () => {
              * one pinned bar inside the form, so the primary action is still
              * on screen at the twentieth line.
              */
-            <div className="space-y-4">
-              <div className="ui-surface border rounded-xl p-4">
+            <div className="invoice-page-shell">
+              <div className="ui-surface border rounded-lg p-2">
                 <InvoiceForm
                   db={dbForUser}
                   setDb={setDb}
@@ -13878,6 +14668,20 @@ const AppShell = () => {
             setDb={setDb}
             openModal={openModal}
             currentCompany={currentCompany}
+            onEditTransaction={(row) => {
+              if (row.type === 'Sales') {
+                setActive('invoices');
+                setInvoiceEditor({ open: true, initial: row.raw });
+                return;
+              }
+              if (row.type === 'Receipt') {
+                setActive('receipts');
+                setReceiptEditor({ open: true, initial: row.raw });
+                return;
+              }
+              if (row.type === 'Debit Note') setActive('debitNotes');
+              else setActive('creditNotes');
+            }}
             onNewTransaction={(customer) => {
               setActive('invoices');
               setInvoiceEditor({ open: true, initial: { customerId: String(customer?.id || '') } });
@@ -13926,6 +14730,7 @@ const AppShell = () => {
             db={dbForUser}
             currentCompany={currentCompany}
             onNavigate={(key) => setActive(key)}
+            onExit={exitWorkspace}
             isEnabled={isEnabled}
             branches={branchesForUser}
             warehouses={warehousesForUser}
@@ -13935,13 +14740,17 @@ const AppShell = () => {
         );
       case 'gstCompliance':
       case 'gstr1':
-        return <GstComplianceWorkspace db={dbForUser} currentCompany={currentCompany} branches={branchesForUser} initialReport="gstr1" />;
+        return <GstComplianceWorkspace db={dbForUser} currentCompany={currentCompany} branches={branchesForUser} initialReport="gstr1" onBack={() => setActive(lastScreenRef.current || 'dashboard')} />;
       case 'gstr3b':
-        return <GstComplianceWorkspace db={dbForUser} currentCompany={currentCompany} branches={branchesForUser} initialReport="gstr3b" />;
+        return <GstComplianceWorkspace db={dbForUser} currentCompany={currentCompany} branches={branchesForUser} initialReport="gstr3b" onBack={() => setActive(lastScreenRef.current || 'dashboard')} />;
       case 'msmeCompliance':
         return <MsmeComplianceWorkspace db={dbForUser} currentCompany={currentCompany} />;
       case 'gstRates':
         return <GstRatesList db={dbForUser} setDb={setDb} currentCompany={currentCompany} />;
+      case 'tdsRates':
+        return <TdsSettings db={dbForUser} setDb={setDb} currentCompany={currentCompany} sectionsOnly />;
+      case 'tcsRates':
+        return <TcsRatesMaster db={dbForUser} setDb={setDb} currentCompany={currentCompany} />;
       case 'invoiceTemplates':
         // Reached from a document's More menu and from Master Data, so it has
         // to hand control back to whichever of those sent it — and saving is
@@ -13951,7 +14760,7 @@ const AppShell = () => {
             db={dbForUser}
             setDb={setDb}
             currentCompany={currentCompany}
-            onBack={() => setActive(lastScreenRef.current || 'invoices')}
+            onBack={() => setActive(settingsBackTarget(lastScreenRef.current))}
           />
         );
       case 'docNumbering':
@@ -13987,12 +14796,12 @@ const AppShell = () => {
         );
       case 'settingsBranches': {
         const orgId = resolveServerOrgId(currentCompany);
-        return <SettingsBranches orgId={orgId} onBranchesChanged={() => setBranchesReloadKey((k) => k + 1)} />;
+        return <SettingsBranches orgId={orgId} company={currentCompany} onBranchesChanged={() => setBranchesReloadKey((k) => k + 1)} />;
       }
       case 'settingsWarehouses': {
         const orgId = resolveServerOrgId(currentCompany);
         const branchId = localStorage.getItem('activeBranchId');
-        return <SettingsWarehouses orgId={orgId} branchId={branchId} onWarehousesChanged={reloadWarehouses} />;
+        return <SettingsWarehouses orgId={orgId} branchId={branchId} company={currentCompany} onWarehousesChanged={reloadWarehouses} />;
       }
       case 'settingsUsers': {
         const orgId = resolveServerOrgId(currentCompany);
@@ -14016,7 +14825,7 @@ const AppShell = () => {
             setDb={setDb}
             currentCompany={currentCompany}
             pane="fields"
-            onBack={() => setActive(lastScreenRef.current || 'invoices')}
+            onBack={() => setActive(settingsBackTarget(lastScreenRef.current))}
           />
         );
       case 'settingsCustomFields':
@@ -14029,7 +14838,7 @@ const AppShell = () => {
             setDb={setDb}
             currentCompany={currentCompany}
             pane="custom"
-            onBack={() => setActive(lastScreenRef.current || 'invoices')}
+            onBack={() => setActive(settingsBackTarget(lastScreenRef.current))}
           />
         );
       case 'settingsModules':
@@ -14101,7 +14910,7 @@ const AppShell = () => {
       case 'reorderAlerts':
         return <ReorderAlerts db={dbForUser} setDb={setDb} currentCompany={currentCompany} />;
       case 'gstr2bReco':
-        return <GstComplianceWorkspace db={dbForUser} currentCompany={currentCompany} branches={branchesForUser} initialReport="reconciliation" />;
+        return <GstComplianceWorkspace db={dbForUser} currentCompany={currentCompany} branches={branchesForUser} initialReport="reconciliation" onBack={() => setActive(lastScreenRef.current || 'dashboard')} />;
       case 'paymentReminders':
         return <PaymentReminders db={dbForUser} setDb={setDb} currentCompany={currentCompany} />;
       case 'salesBySalesman':
@@ -14114,6 +14923,7 @@ const AppShell = () => {
             db={dbForUser}
             setDb={setDb}
             currentCompany={currentCompany}
+            onBack={() => setActive(lastScreenRef.current || 'dashboard')}
             onOpenSettings={(screen) => setActive(screen)}
             onNewChallan={() =>
               openModal(
@@ -14354,7 +15164,7 @@ const AppShell = () => {
        Cash Accounts set the state, React re-rendered, and this memo handed
        back the same list element it had built before — the button did nothing
        at all, and so did Edit. Add an editor here, add it to this list. */
-  }, [active, bankAcctForm, billEditor, branchesError, branchesForUser, branchesLoading, companiesIntent, creditNoteEditor, currentCompany, dbForUser, debitNoteEditor, estimateEditor, importKind, invoiceEditor, journalEditor, openLedger, paymentEditor, receiptEditor, ledgerNav, stockTransferEditor, warehousesForUser, activeWarehouseId, activeBranchId, poEditor]);
+  }, [active, bankAcctForm, billEditor, branchesError, branchesForUser, branchesLoading, companiesIntent, creditNoteEditor, currentCompany, dbForUser, debitNoteEditor, estimateEditor, exitWorkspace, importKind, invoiceEditor, journalEditor, openLedger, paymentEditor, receiptEditor, ledgerNav, stockTransferEditor, warehousesForUser, activeWarehouseId, activeBranchId, poEditor]);
 
 
   if (hasBranchRestriction && !authCtx.loading && authCtx.data && allowedBranchIds.length === 0) {
@@ -14414,11 +15224,11 @@ const AppShell = () => {
            click with nothing happening. */
         className="shrink-0 z-40 backdrop-blur"
         style={{
-          backgroundColor: 'rgb(var(--surface) / 0.85)',
+          backgroundColor: 'rgb(var(--header-bg) / 0.96)',
           borderBottom: '1px solid rgb(var(--border))',
         }}
       >
-        <div className="w-full px-4 lg:px-6 h-14 flex items-center justify-between gap-4">
+        <div className="w-full px-2.5 lg:px-3 h-10 flex items-center justify-between gap-1.5">
           {/* No gap here: the only two children are the rail-width company block
               and the search, and a gap between them would push the search off
               the content's left edge by exactly that much. Each child spaces
@@ -14433,17 +15243,17 @@ const AppShell = () => {
               the page content starts rather than floating over the navigation.
             */}
             <div
-              className={`flex items-center gap-2.5 min-w-0 shrink-0 md:-ms-4 md:ps-4 lg:-ms-6 lg:ps-6 ${
+              className={`flex items-center gap-1.5 min-w-0 shrink-0 md:-ms-3 md:ps-3 lg:-ms-4 lg:ps-4 ${
                 /* Collapsed, the rail is 60px — narrower than the company name
                    — so there is no column left to match. Pinning the block to
                    60 would crush the name; pinning it to 240 would strand the
                    search 180px into open page. Natural width keeps the two
                    together, which is what the collapsed rail is asking for. */
-                navCollapsed ? '' : 'md:w-56 lg:w-60'
+                dedicatedWorkspaceMode || navCollapsed ? '' : 'md:w-56 lg:w-60'
               }`}
             >
             {/* Phone-only: the rail lives in a drawer, opened here. */}
-            <button
+            {!dedicatedWorkspaceMode ? <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
               className="ui-icon-btn md:hidden"
@@ -14451,15 +15261,13 @@ const AppShell = () => {
               aria-expanded={mobileNavOpen}
             >
               <PanelLeftOpen size={18} aria-hidden="true" />
-            </button>
-            <Building2 size={18} style={{ color: 'rgb(var(--accent))' }} aria-hidden="true" />
-
-            {availableOrgs.length > 1 ? (
-              <div className="relative" ref={orgMenuRef}>
+            </button> : null}
+            <img src={currentCompany?.logo || '/clor-logo.png'} alt={currentCompany?.logo ? `${activeOrgName} logo` : 'CLOR'} className="h-5 w-5 shrink-0 object-contain" />
+            <div className="relative" ref={orgMenuRef}>
                 <button
                   type="button"
                   onClick={() => setOrgMenuOpen((v) => !v)}
-                  className="ui-btn ui-btn-ghost !px-1.5 max-w-[16rem]"
+                  className="ui-btn ui-btn-ghost !h-8 !min-h-8 !px-1.5 max-w-[16rem]"
                   aria-haspopup="menu"
                   aria-expanded={orgMenuOpen}
                 >
@@ -14490,13 +15298,51 @@ const AppShell = () => {
                         </button>
                       );
                     })}
+                    <div className="border-t ui-border-c p-1.5">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setOrgMenuOpen(false);
+                          setCompaniesIntent('create');
+                          setActive('companies');
+                        }}
+                        className="ui-btn ui-btn-ghost w-full !justify-start"
+                      >
+                        <Plus size={14} aria-hidden="true" /> Add company
+                      </button>
+                    </div>
                   </div>
                 ) : null}
               </div>
-            ) : (
-              <div className="ui-title text-sm truncate">{activeOrgName}</div>
-            )}
+            <button
+              type="button"
+              onClick={toggleNavCollapsed}
+              className="ui-icon-btn hidden md:inline-flex !h-7 !w-7 shrink-0"
+              aria-pressed={navCollapsed}
+              aria-label={navCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+              title={navCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            >
+              {navCollapsed ? <PanelLeftOpen size={15} aria-hidden="true" /> : <PanelLeftClose size={15} aria-hidden="true" />}
+            </button>
             </div>
+
+            {financialYearOptions.length ? <label className="hidden md:flex items-center gap-1.5 ms-2 me-2 text-xs ui-muted whitespace-nowrap">
+              <span>FY</span>
+              <select
+                value={displayedFinancialYear}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setActiveFinancialYear(value);
+                  localStorage.setItem('activeFinancialYear', value);
+                  window.dispatchEvent(new CustomEvent('clor:financial-year-changed', { detail: { financialYear: value } }));
+                }}
+                className="ui-select !h-8 !min-h-8 !py-1 !px-2 w-[6.5rem] text-xs"
+                aria-label="Financial year"
+              >
+                {financialYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
+              </select>
+            </label> : null}
 
             {/*
               Search, at the content's left edge.
@@ -14515,7 +15361,7 @@ const AppShell = () => {
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
-              className="ui-input hidden md:flex items-center gap-2 w-56 lg:w-72 shrink-0 text-start ps-3 pe-1.5"
+              className="ui-input hidden md:flex items-center gap-1.5 w-48 lg:w-64 shrink-0 text-start ps-2.5 pe-1.5 !h-8 !min-h-8"
               style={{ color: 'rgb(var(--fg-subtle))' }}
               aria-label="Search invoices, customers, items"
             >
@@ -14525,85 +15371,7 @@ const AppShell = () => {
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* The location shift lives here, on top of the software: branch
-                first, then a warehouse within it.
-
-                These used to render only with two or more to choose between,
-                on the reasoning that one is not a choice. But the control is
-                also the only place that says *where you are*, and a book with
-                one warehouse showed nothing at all — so a new org, which has
-                none, had no warehouse control and no route to make one. They
-                show from the first one now, and say so when there are none. */}
-            {branchesForUser.length >= 1 ? (
-              <span className="ui-scope-field hidden md:inline-flex">
-                <PhBranch size={16} weight="fill" aria-hidden="true" />
-              <select
-                value={activeBranchId || ''}
-                onChange={(e) => setActiveBranch(e.target.value)}
-                disabled={!branchesFeatureEnabled}
-                className="ui-select ui-scope-select max-w-[16rem] text-sm"
-                aria-label={branchesFeatureEnabled ? 'Active branch' : 'Default branch (locked)'}
-                title={branchesFeatureEnabled ? 'Active branch' : 'Branches are disabled; the default branch is used automatically.'}
-              >
-                {branchesForUser.map((b) => (
-                  <option key={b.id} value={String(b.id)}>
-                    {b.branchCode ? `${b.branchCode} - ${b.branchName || ''}`.trim() : b.branchName || `Branch ${b.id}`}
-                  </option>
-                ))}
-              </select>
-              </span>
-            ) : null}
-
-            {warehousesForActiveBranch.length >= 1 ? (
-              <span className="ui-scope-field hidden md:inline-flex">
-                <PhWarehouse size={16} weight="fill" aria-hidden="true" />
-              <select
-                value={activeWarehouseId || ''}
-                onChange={(e) => setActiveWarehouse(e.target.value)}
-                disabled={!warehousesFeatureEnabled}
-                className="ui-select ui-scope-select max-w-[16rem] text-sm"
-                aria-label={warehousesFeatureEnabled ? 'Active warehouse' : 'Default warehouse (locked)'}
-                title={warehousesFeatureEnabled ? 'Active warehouse' : 'Warehouses are disabled; the default warehouse is used automatically.'}
-              >
-                {warehousesFeatureEnabled ? <option value="">All warehouses</option> : null}
-                {warehousesForActiveBranch.map((w) => (
-                  <option key={w.id} value={String(w.id)}>
-                    {w.name || `Warehouse ${w.id}`}
-                  </option>
-                ))}
-              </select>
-              </span>
-            ) : !warehousesFeatureEnabled || warehousesLoading ? null : (
-              /* None yet. Stock, transfers and every document's warehouse field
-                 depend on there being one, so this says so and goes there. */
-              <button
-                type="button"
-                onClick={() => setActive('settingsWarehouses')}
-                className="ui-btn ui-btn-secondary hidden md:inline-flex text-sm"
-      title="No warehouse yet — stock and documents need one"
-              >
-                <Package size={16} aria-hidden="true" /> Add warehouse
-              </button>
-            )}
-
-            {/*
-              The financial-year selector stood here. It was a floor under
-              every list and report — a screen whose own period was "All time"
-              silently answered for that year instead — and the floor was
-              invisible from the screen it changed. Each list has its own
-              period control, which was always the narrower one and always won,
-              so that is the only one now.
-            */}
-
-            {/*
-              The quick-create button used to sit here. It repeated on all
-              fifty-nine screens to offer what the page in front of you already
-              offers in its own top right, and it sat between the warehouse
-              picker and the notifications — a strip that says where you are,
-              not what you can do. Command-K reaches the same list from
-              anywhere without spending the space.
-            */}
+          <div className="flex items-center gap-1.5">
 
             {/* Notifications: computed from the books, never invented. */}
             <div className="relative" ref={notifRef}>
@@ -14613,7 +15381,7 @@ const AppShell = () => {
                   setNotifOpen((v) => !v);
                   if (!notifOpen) markNotifsSeen();
                 }}
-                className="ui-icon-btn relative"
+                className="ui-icon-btn relative !h-8 !w-8"
                 aria-haspopup="menu"
                 aria-expanded={notifOpen}
                 aria-label={`Notifications${notifications.length ? `, ${notifications.length} item${notifications.length === 1 ? '' : 's'}` : ''}`}
@@ -14668,8 +15436,7 @@ const AppShell = () => {
             </div>
 
             <span className="ui-pill ui-pill-neutral hidden lg:inline-flex">{activeLabel}</span>
-            {/* The theme belongs to the platform bar above: one control, and
-                one answer for every app a company has open. */}
+            <ThemeToggle theme={theme} onToggle={toggleTheme} compact />
 
             {/*
               Identity, top right, where people reach for it.
@@ -14685,7 +15452,7 @@ const AppShell = () => {
               <button
                 type="button"
                 onClick={() => setAccountMenuOpen((v) => !v)}
-                className="block h-9 w-9 shrink-0 rounded-full overflow-hidden"
+                className="block h-8 w-8 shrink-0 rounded-full overflow-hidden"
                 aria-haspopup="menu"
                 aria-expanded={accountMenuOpen}
                 aria-label="Your profile"
@@ -14697,12 +15464,12 @@ const AppShell = () => {
                     alt=""
                     width={32}
                     height={32}
-                    className="h-9 w-9 rounded-full object-cover"
+                    className="h-8 w-8 rounded-full object-cover"
                     style={{ border: '1px solid rgb(var(--border))' }}
                   />
                 ) : (
                   <span
-                    className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-medium"
+                    className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium"
                     style={{ backgroundColor: 'rgb(var(--accent-soft))', color: 'rgb(var(--brand-ink))' }}
                     aria-hidden="true"
                   >
@@ -14836,7 +15603,7 @@ const AppShell = () => {
             aria-hidden="true"
           />
         ) : null}
-        <aside
+        {!dedicatedWorkspaceMode ? <aside
           /*
            * Operable while the Features panel is open, deliberately.
            *
@@ -14860,28 +15627,7 @@ const AppShell = () => {
                middle of the screen with nothing under it. */
             className="ui-rail p-2 md:h-full flex flex-col min-h-0"
           >
-            {/* Collapse control: desktop only — on a phone the rail already
-                stacks above the content and hiding labels saves nothing. */}
-            <button
-              type="button"
-              onClick={toggleNavCollapsed}
-              className={`ui-nav-item ui-nav-collapse hidden md:flex ${navCollapsed ? 'md:justify-center' : ''}`}
-              data-collapsed={navCollapsed ? 'true' : undefined}
-              aria-pressed={navCollapsed}
-              aria-label={navCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-      title={navCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-            >
-              {/* shrink-0, or the narrow rail flexes a 16px glyph down to
-                  nothing and the control renders as an empty box. */}
-              {navCollapsed ? (
-                <PanelLeftOpen size={16} aria-hidden="true" className="shrink-0" />
-              ) : (
-                <PanelLeftClose size={16} aria-hidden="true" className="shrink-0" />
-              )}
-              <span className={navCollapsed ? 'md:hidden' : ''}>Collapse</span>
-            </button>
-
-            <div className="ui-nav-scroll space-y-0.5 min-h-0 flex-1 overflow-y-auto">
+            <div className="ui-nav-scroll space-y-1.5 min-h-0 flex-1 overflow-y-auto">
               {visibleNav.map((entry) => {
                 if (entry.type === 'item') {
                   const Icon = entry.icon;
@@ -15028,7 +15774,6 @@ const AppShell = () => {
                 );
               })}
             </div>
-
             {/*
               The rail used to carry an account menu here, pinned to the bottom.
               It moved to the avatar in the top right — one identity control,
@@ -15036,7 +15781,7 @@ const AppShell = () => {
               be two things to keep in step for no gain.
             */}
           </nav>
-        </aside>
+        </aside> : null}
 
         {paletteOpen ? (
         <CommandPalette
@@ -15065,7 +15810,9 @@ const AppShell = () => {
           id="main-content"
           key={active}
           inert={featuresOpen || undefined}
-          className="min-w-0 flex-1 ui-content overflow-y-auto overflow-x-hidden min-h-0 px-2 py-3 lg:px-3"
+          className={`min-w-0 flex-1 ui-content overflow-y-auto overflow-x-hidden min-h-0 ${
+            active === 'invoices' && invoiceEditor.open ? 'px-1 py-0' : 'p-0'
+          }`}
           /*
            * Two fixes, because the two families of scrollbar break this
            * differently.
@@ -15114,7 +15861,17 @@ const AppShell = () => {
               Could not load warehouses: {warehousesError}
             </div>
           ) : null}
-          {reportPageKeys.has(String(active)) && active !== 'reports' ? (
+          {dedicatedMasterDataMode ? (
+            <MasterDataWorkspace
+              activeKey={active}
+              can={can}
+              isEnabled={isEnabled}
+              onNavigate={setActive}
+              onExit={exitWorkspace}
+            >
+              <Suspense fallback={<SkeletonStats count={4} />}>{page}</Suspense>
+            </MasterDataWorkspace>
+          ) : reportPageKeys.has(String(active)) && !['reports', 'tds'].includes(String(active)) ? (
             <div className="space-y-4">
               <div>
                 <button
@@ -15138,6 +15895,7 @@ const AppShell = () => {
               activeKey={active}
               can={can}
               isEnabled={isEnabled}
+              onExit={exitWorkspace}
               onNavigate={(target) => {
                 if (target === 'settings') {
                   setActive('settings');
@@ -15170,7 +15928,13 @@ const AppShell = () => {
       />
 
       {modal.content && (
-        <Modal onClose={() => openModal(null)} title={modal.title} maxWidthClass={modal.maxWidthClass}>
+        <Modal
+          onClose={() => openModal(null)}
+          title={modal.title}
+          maxWidthClass={modal.maxWidthClass}
+          headerActions={modal.headerActions}
+          showCloseIcon={modal.showCloseIcon}
+        >
           {modal.content}
         </Modal>
       )}
@@ -15216,27 +15980,38 @@ const App = () => {
   return <AuthedApp />;
 };
 
-/**
- * Accounting, as the platform mounts it.
- *
- * The shell has already established who is signed in and which company they
- * are looking at, so this no longer watches localStorage for a token: it reads
- * the company from the platform context and remounts its providers when that
- * changes. A company switch has to re-fetch permissions and features, because
- * both are answers about a company and not about a person.
- */
-const AccountingRoot = () => {
-  const [sessionKey, setSessionKey] = useState(() => String(platformOrgId() || ''));
+const AuthedApp = () => {
+  const [sessionKey, setSessionKey] = useState(() => {
+    const token = String(localStorage.getItem('token') || '').trim();
+    const org = String(localStorage.getItem('activeOrgId') || '').trim();
+    const branch = String(localStorage.getItem('activeBranchId') || localStorage.getItem('branchId') || '').trim();
+    return `${token ? 'auth' : 'anon'}:${org}:${branch}`;
+  });
 
-  useEffect(() => onPlatformContextChange((ctx) => setSessionKey(String(ctx.orgId || ''))), []);
+  useEffect(() => {
+    // Login and org switching both happen through localStorage in this app, so
+    // poll cheaply rather than threading a callback through every call site.
+    const id = setInterval(() => {
+      const token = String(localStorage.getItem('token') || '').trim();
+      const org = String(localStorage.getItem('activeOrgId') || '').trim();
+      const branch = String(localStorage.getItem('activeBranchId') || localStorage.getItem('branchId') || '').trim();
+      const next = `${token ? 'auth' : 'anon'}:${org}:${branch}`;
+      setSessionKey((prev) => (prev === next ? prev : next));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const [authState, orgId] = sessionKey.split(':');
+  const hasSession = sessionKey.startsWith('auth:') && Boolean(orgId);
+  const identityKey = `${authState}:${orgId}`;
 
   return (
-    <PermissionProvider key={sessionKey} enabled>
-      <FeatureProvider key={`f:${sessionKey}`} enabled>
+    <PermissionProvider key={identityKey} reloadKey={sessionKey} enabled={Boolean(hasSession)}>
+      <FeatureProvider key={`f:${identityKey}`} enabled={Boolean(hasSession)}>
         <AppShell />
       </FeatureProvider>
     </PermissionProvider>
   );
 };
 
-export default AccountingRoot;
+export default App;

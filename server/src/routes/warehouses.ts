@@ -12,6 +12,7 @@ warehousesRouter.use(requireAuth, requireTenantContext);
 
 const warehouseSchema = z.object({
   branchId: z.string().min(1),
+  code: z.string().min(1).max(20).optional(),
   name: z.string().min(1).max(200),
   addressLine1: z.string().max(250).optional().nullable(),
   addressLine2: z.string().max(250).optional().nullable(),
@@ -23,6 +24,7 @@ const warehouseSchema = z.object({
   contactPerson: z.string().max(100).optional().nullable(),
   phone: z.string().max(30).optional().nullable(),
   email: z.string().email().optional().nullable(),
+  isActive: z.boolean().optional(),
 });
 
 // Reference data, not administration: every document form (invoice, transfer,
@@ -64,6 +66,7 @@ warehousesRouter.post('/orgs/:orgId/warehouses', requirePermission('MASTERS', Pe
       accountId,
       orgId,
       branchId: body.branchId,
+      code: String(body.code || `WH-${Date.now().toString(36).toUpperCase()}`).slice(0, 20),
       name: body.name,
       addressLine1: body.addressLine1 ?? null,
       addressLine2: body.addressLine2 ?? null,
@@ -75,6 +78,7 @@ warehousesRouter.post('/orgs/:orgId/warehouses', requirePermission('MASTERS', Pe
       contactPerson: body.contactPerson ?? null,
       phone: body.phone ?? null,
       email: body.email ?? null,
+      isActive: body.isActive ?? true,
       createdByUserId: userId,
     },
   });
@@ -109,6 +113,8 @@ warehousesRouter.patch('/orgs/:orgId/warehouses/:warehouseId', requirePermission
     where: { id: warehouseId },
     data: {
       ...('branchId' in body ? { branchId: body.branchId } : {}),
+      // A warehouse code is an accounting identity. It is assigned once and
+      // deliberately excluded from updates.
       ...('name' in body ? { name: body.name! } : {}),
       ...('addressLine1' in body ? { addressLine1: body.addressLine1 ?? null } : {}),
       ...('addressLine2' in body ? { addressLine2: body.addressLine2 ?? null } : {}),
@@ -120,6 +126,7 @@ warehousesRouter.patch('/orgs/:orgId/warehouses/:warehouseId', requirePermission
       ...('contactPerson' in body ? { contactPerson: body.contactPerson ?? null } : {}),
       ...('phone' in body ? { phone: body.phone ?? null } : {}),
       ...('email' in body ? { email: body.email ?? null } : {}),
+      ...('isActive' in body ? { isActive: body.isActive } : {}),
       createdByUserId: existing.createdByUserId || userId,
     },
   });
@@ -136,6 +143,29 @@ warehousesRouter.delete('/orgs/:orgId/warehouses/:warehouseId', requirePermissio
   const existing = await prisma.warehouse.findFirst({ where: { accountId, orgId, id: warehouseId } });
   if (!existing) return res.status(404).json({ error: 'Warehouse not found' });
 
-  await prisma.warehouse.delete({ where: { id: warehouseId } });
+  const transactionCounts = await Promise.all([
+    prisma.invoice.count({ where: { accountId, orgId, warehouseId } }),
+    prisma.bill.count({ where: { accountId, orgId, warehouseId } }),
+    prisma.purchaseOrderDoc.count({ where: { accountId, orgId, warehouseId } }),
+    prisma.salesOrderDoc.count({ where: { accountId, orgId, warehouseId } }),
+    prisma.deliveryChallan.count({ where: { accountId, orgId, warehouseId } }),
+    prisma.expense.count({ where: { accountId, orgId, warehouseId } }),
+    prisma.creditNote.count({ where: { accountId, orgId, warehouseId } }),
+    prisma.debitNote.count({ where: { accountId, orgId, warehouseId } }),
+    prisma.inventoryAdjustment.count({ where: { accountId, orgId, warehouseId } }),
+    prisma.interBranchTransfer.count({ where: { accountId, orgId, OR: [{ sourceWarehouseId: warehouseId }, { targetWarehouseId: warehouseId }] } }),
+  ]);
+  if (transactionCounts.some((count) => count > 0)) {
+    return res.status(409).json({ error: 'This warehouse cannot be deleted because transactions are associated with it. Mark it inactive instead.' });
+  }
+
+  try {
+    await prisma.warehouse.delete({ where: { id: warehouseId } });
+  } catch (error: any) {
+    if (error?.code === 'P2003') {
+      return res.status(409).json({ error: 'This warehouse cannot be deleted because records are associated with it. Mark it inactive instead.' });
+    }
+    throw error;
+  }
   res.json({ ok: true });
 });

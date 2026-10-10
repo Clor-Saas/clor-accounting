@@ -265,7 +265,7 @@ const CashBankModule = ({ db, setDb, currentCompany, openModal, openLedgerCreate
   }, [db.chartOfAccounts, companyId]);
 
   const customers = useMemo(() => {
-    return safeArray(db.customers).filter((c) => c.companyId === companyId);
+    return safeArray(db.customers).filter((c) => c.companyId === companyId && c.isActive !== false);
   }, [db.customers, companyId]);
 
   const vendors = useMemo(() => {
@@ -2057,7 +2057,7 @@ const CashBankModule = ({ db, setDb, currentCompany, openModal, openLedgerCreate
                         <td className={`ui-money ${r.direction === 'OUT' ? 'text-[rgb(var(--neg-ink))]' : 'text-[rgb(var(--pos-ink))]'}`}>
                           {r.direction === 'OUT' ? '−' : ''}{formatMoney(r.amount, currentCompany)}
                         </td>
-                        <td className="truncate">{r.narration || '—'}</td>
+                        <td className="ui-narration truncate">{r.narration || '—'}</td>
                         <td className="ui-mono">{r.reference || '—'}</td>
                         <td>
                           <StatusPill
@@ -2255,7 +2255,7 @@ const CashBankModule = ({ db, setDb, currentCompany, openModal, openLedgerCreate
                         <td className="ui-col-date px-4 py-3"><DocDate value={t.date} /></td>
                         <td className="ui-col-meta px-4 py-3">{String(t.description || '').trim() || '-'}</td>
                         <td className="ui-col-meta px-4 py-3">{ledgerName}</td>
-                        <td className="ui-col-meta px-4 py-3">{String(t.narration || '').trim() || '-'}</td>
+                        <td className="ui-col-meta ui-narration px-4 py-3">{String(t.narration || '').trim() || '-'}</td>
                         <td className="ui-col-amount px-4 py-3 text-right text-[rgb(var(--neg))]"><MoneyValue value={isOut ? formatMoney(Number(t.amount ?? 0), currentCompany) : '-'} company={currentCompany} /></td>
                         <td className="ui-col-amount px-4 py-3 text-right text-[rgb(var(--pos))]"><MoneyValue value={isOut ? '-' : formatMoney(Number(t.amount ?? 0), currentCompany)} company={currentCompany} /></td>
                         <td className="px-4 py-3">

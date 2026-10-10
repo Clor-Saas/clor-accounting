@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { BadgePercent, Ban, Download, FileText, Pencil, Plus, Receipt, Trash2, Users } from 'lucide-react';
+import { Plus, Users } from 'lucide-react';
 
 import { ColumnHeader, useColumnFilters } from '@ui/components/ColumnFilters';
 import { useListSearch } from '@ui/components/ListToolbar';
 import { EmptyState, TableTotals } from '@ui/components/ui/Primitives';
-import { confirmDialog, notify } from '@ui/components/ui/notify';
+import { confirmDialog } from '@ui/components/ui/notify';
 import DocumentListShell from '@ui/components/list/DocumentListShell';
 import { CustomerForm } from '../../components/pickers/CustomerPicker';
 import CustomerDetailPage from './CustomerDetailPage';
@@ -20,7 +20,7 @@ import { exportFormatFromKey, exportMenuItem, runListExport } from '@ui/componen
  * screen in its own right, and a screen that cannot be rendered on its own
  * cannot be tested on its own either.
  */
-export default function CustomersList({ db, setDb, currentCompany, onNewTransaction }) {
+export default function CustomersList({ db, setDb, currentCompany, onNewTransaction, onEditTransaction }) {
   const customers = db.customers.filter((c) => c.companyId === currentCompany.id);
   const customerSearch = useListSearch(customers, [(c) => getCustomerDisplayName(c), 'phone', 'mobile', 'email', 'gstin']);
   const customerSearchFilters = useColumnFilters();
@@ -100,62 +100,42 @@ export default function CustomersList({ db, setDb, currentCompany, onNewTransact
     { key: 'overdue', label: 'Overdue', value: (r) => standingOf(customerStanding, r.id).overdue },
   ];
 
-  const getCustomerReferences = (customerId) => {
-    const idStr = String(customerId);
-    const sources = [
-      { key: 'invoices', label: 'Invoice' },
-      { key: 'estimates', label: 'Quotation' },
-      { key: 'creditNotes', label: 'Credit Note' },
-    ];
-
-    const refs = [];
-    for (const src of sources) {
-      const docs = Array.isArray(db[src.key]) ? db[src.key] : [];
-      for (const doc of docs) {
-        if (doc?.companyId !== currentCompany.id) continue;
-        const used = String(doc?.customerId || '') === idStr;
-        if (!used) continue;
-        const num = String(doc?.number || '').trim();
-        refs.push(`${src.label}${num ? ` ${num}` : ''}`);
-      }
-    }
-    return refs;
-  };
-
   const onEditCustomer = (customer) => {
     setEditingCustomer(customer);
     setIsCreating(false);
   };
 
-  const onDeleteCustomer = async (customer) => {
-    const refs = getCustomerReferences(customer.id);
-    if (refs.length) {
-      const preview = refs.slice(0, 5).join(', ');
-      notify.error(`Cannot delete this customer because it is used in: ${preview}${refs.length > 5 ? '...' : ''}`);
-      return;
-    }
-
-    const ok = await confirmDialog({ title: 'Please confirm', message: `Delete customer "${String(getCustomerDisplayName(customer) || '').trim() || 'this customer'}"?`, confirmLabel: 'Yes, continue' });
-    if (!ok) return;
-
-    setDb({
-      ...db,
-      customers: (Array.isArray(db.customers) ? db.customers : []).filter(
-        (c) => !(c.companyId === currentCompany.id && String(c.id) === String(customer.id))
-      ),
-    });
-  };
-
   if (viewingCustomer) {
+    const liveCustomer = customers.find((customer) => String(customer.id) === String(viewingCustomer.id)) || viewingCustomer;
+    const deleteCustomerTransaction = async (row) => {
+      const ok = await confirmDialog({ title: 'Delete transaction?', message: `Delete ${row.type} ${row.number || ''}? This removes it from this customer statement.`, confirmLabel: 'Delete', tone: 'danger' });
+      if (!ok) return;
+      if (row.type === 'Opening Balance') {
+        setDb({ ...db, customers: (db.customers || []).map((item) => String(item.id) === String(liveCustomer.id) ? { ...item, openingBalance: 0 } : item) });
+        return;
+      }
+      const collection = row.type === 'Sales' ? 'invoices' : row.type === 'Receipt' ? 'payments' : row.type === 'CN' ? 'creditNotes' : row.type === 'Debit Note' ? 'debitNotes' : row.type === 'Sales Return' ? 'salesReturns' : '';
+      if (!collection) return;
+      setDb({ ...db, [collection]: (db[collection] || []).filter((item) => String(item.id) !== String(row.raw?.id)) });
+    };
     return (
       <CustomerDetailPage
         db={db}
         currentCompany={currentCompany}
-        customer={viewingCustomer}
-        onNewTransaction={() => onNewTransaction?.(viewingCustomer)}
+        customer={liveCustomer}
+        onEditTransaction={(row) => {
+          if (row.type === 'Opening Balance') {
+            setViewingCustomer(null);
+            onEditCustomer(liveCustomer);
+            return;
+          }
+          onEditTransaction?.(row);
+        }}
+        onDeleteTransaction={deleteCustomerTransaction}
+        onNewTransaction={() => onNewTransaction?.(liveCustomer)}
         onBack={() => setViewingCustomer(null)}
         onEdit={() => {
-          const c = viewingCustomer;
+          const c = liveCustomer;
           setViewingCustomer(null);
           onEditCustomer(c);
         }}
@@ -206,6 +186,9 @@ export default function CustomersList({ db, setDb, currentCompany, onNewTransact
     <DocumentListShell
       entity="customers"
       title="Customers"
+      compact
+      tight
+      className="customer-list-page"
       company={currentCompany}
       search={{
         value: customerSearch.query,
@@ -231,25 +214,16 @@ export default function CustomersList({ db, setDb, currentCompany, onNewTransact
           <Plus size={16} aria-hidden="true" /> New Customer
         </button>
       }
-      cards={[
-        { label: 'Customers', value: custHeadline.count, count: true, tone: 'draft', Icon: Users },
-        { label: 'Owing you', value: custHeadline.owing, count: true, tone: 'outstanding', Icon: FileText },
-        { label: 'Outstanding', value: custHeadline.outstanding, tone: 'sent', Icon: Receipt },
-        { label: 'Overdue', value: custHeadline.overdue, tone: 'overdue', Icon: Ban },
-        { label: 'GST registered', value: custHeadline.registered, count: true, tone: 'paid', Icon: BadgePercent },
-      ]}
       tabs={CUST_STATUS_TABS}
       tabsLabel="Customer filter"
+      statusInHeader
       statusValue={custStatus}
       statusCounts={custStatusCounts}
       onStatusChange={setCustStatus}
-      tip={{
-        storageKey: 'neev.tip.customers',
-        text: 'Outstanding and overdue are read off the invoices themselves — there is no balance to keep up to date.',
-        Icon: Users,
-      }}
     >
-      <div className="overflow-x-auto ui-table-scroll">
+      <div
+        className="overflow-x-auto ui-table-scroll customer-table-scroll"
+      >
         <table className="ui-table ui-table-wide ui-table-sticky">
           <thead>
             <tr>
@@ -262,13 +236,12 @@ export default function CustomersList({ db, setDb, currentCompany, onNewTransact
               {/* Overdue beside outstanding, not instead of it: the second
                   figure is the one somebody rings about. */}
               <th scope="col" className="ui-num">Overdue</th>
-              <th scope="col"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody className="ui-rows">
             {visibleCustomers.length === 0 ? (
               <tr>
-                <td colSpan="8">
+                <td colSpan="7">
                   <EmptyState
                     icon={Users}
                     kind="new"
@@ -331,24 +304,6 @@ export default function CustomersList({ db, setDb, currentCompany, onNewTransact
                     ) : (
                       <span className="ui-muted">—</span>
                     )}
-                  </td>
-                  <td className="ui-col-meta">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onEditCustomer(customer)}
-                        className="px-3 py-1.5 rounded-lg border ui-surface ui-hover-sunken ui-border-c text-sm flex items-center gap-1"
-                      >
-                        <Pencil size={16} /> Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDeleteCustomer(customer)}
-                        className="px-3 py-1.5 rounded-lg border ui-surface ui-hover-sunken ui-border-c text-sm flex items-center gap-1 text-[rgb(var(--neg))]"
-                      >
-                        <Trash2 size={16} /> Delete
-                      </button>
-                    </div>
                   </td>
                 </tr>
               ))

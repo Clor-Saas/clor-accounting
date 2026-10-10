@@ -2214,6 +2214,58 @@ export const normalizeDB = (db) => {
     }
   }
 
+  /*
+   * The compact chart migration retired the old technical ledgers from the
+   * master list. Standard TDS section ledgers were created just before that
+   * migration and were accidentally retired with them, even though purchase
+   * and expense deductions still offered those exact rows. Restore every
+   * ledger filed under TDS Payable / Receivable (including nested groups), so
+   * the deduction picker and Chart of Accounts expose one shared master.
+   */
+  for (const company of Array.isArray(next.companies) ? next.companies : []) {
+    const companyId = Number(company?.id);
+    if (!companyId) continue;
+    const settings = company?.docSettings && typeof company.docSettings === 'object' ? company.docSettings : {};
+    const migrations = settings.migrations && typeof settings.migrations === 'object' ? settings.migrations : {};
+    if (migrations.tdsLedgersVisibleV1Applied) continue;
+
+    const groups = (Array.isArray(next.accountGroups) ? next.accountGroups : []).filter(
+      (group) => Number(group?.companyId) === companyId
+    );
+    const byId = new Map(groups.map((group) => [String(group.id), group]));
+    const belongsToTds = (groupId) => {
+      const seen = new Set();
+      let group = byId.get(String(groupId || '')) || null;
+      while (group && !seen.has(String(group.id))) {
+        seen.add(String(group.id));
+        if (/\btds\b/i.test(String(group.name || ''))) return true;
+        group = byId.get(String(group.parentGroupId || '')) || null;
+      }
+      return false;
+    };
+
+    next.chartOfAccounts = (Array.isArray(next.chartOfAccounts) ? next.chartOfAccounts : []).map((account) =>
+      Number(account?.companyId) === companyId && belongsToTds(account?.groupId)
+        ? { ...account, hiddenFromChart: false }
+        : account
+    );
+    next.companies = next.companies.map((row) =>
+      Number(row?.id) === companyId
+        ? {
+            ...row,
+            docSettings: {
+              ...(row.docSettings || {}),
+              migrations: {
+                ...((row.docSettings && row.docSettings.migrations) || {}),
+                tdsLedgersVisibleV1Applied: true,
+                tdsLedgersVisibleV1AppliedAt: new Date().toISOString(),
+              },
+            },
+          }
+        : row
+    );
+  }
+
   return next;
 };
 

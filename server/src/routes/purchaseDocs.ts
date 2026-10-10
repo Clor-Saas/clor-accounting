@@ -366,6 +366,147 @@ function register(kind: DocKind) {
   );
 
   /**
+   * Update an existing purchase-side document and replace its accounting
+   * effect. These documents are posted when they are created, so changing the
+   * row without replacing the journal would leave the register and ledger at
+   * different values. The original entries remain in the audit trail and are
+   * reversed before the corrected document is posted.
+   */
+  purchaseDocsRouter.patch(
+    `/orgs/:orgId/${cfg.path}/:docId`,
+    requirePermission(cfg.module, PermissionAction.EDIT, cfg.resource),
+    async (req, res) => {
+      if (!orgOk(req, res)) return;
+      if (!(await featureOn(req, res))) return;
+      const { accountId, orgId, branchId } = req.tenant!;
+      const userId = req.auth!.userId;
+      const docId = String(req.params.docId);
+      const existing = await table().findFirst({ where: { id: docId, accountId, orgId, branchId } });
+      if (!existing) return res.status(404).json({ error: `${cfg.resource} not found` });
+
+      const body = docSchema.parse(req.body);
+      const settledAmount = num(existing.settledAmount);
+      if (num(body.total) + 0.0001 < settledAmount) {
+        return res.status(409).json({
+          error: `This document has ${settledAmount.toFixed(2)} settled against it. Reverse the payment before reducing its total.`,
+        });
+      }
+
+      const requestedNumber = String(body.number || existing.number).trim();
+      if (requestedNumber !== String(existing.number)) {
+        const duplicate = await table().findFirst({
+          where: { accountId, orgId, number: requestedNumber, id: { not: existing.id } },
+          select: { id: true },
+        });
+        if (duplicate) {
+          return res.status(409).json({ error: `Number "${requestedNumber}" is already used by another document.` });
+        }
+      }
+
+      await ensureLedgerSetup(accountId, orgId, userId);
+      const baseCurrency = await baseCurrencyFor(accountId, orgId);
+      const docCurrency = String(body.currency || existing.currency || baseCurrency).toUpperCase();
+      let fxRate = 1;
+      try {
+        fxRate = isBase(docCurrency, baseCurrency)
+          ? 1
+          : await rateFor({ accountId, orgId, currency: docCurrency, date: body.date, baseCurrency });
+      } catch (e: any) {
+        if (e instanceof FxError) return res.status(400).json({ error: e.message });
+        throw e;
+      }
+
+      const entries = await prisma.journalEntry.findMany({
+        where: { accountId, orgId, sourceDocType: kind, sourceDocId: existing.id, status: 'POSTED' },
+        select: { id: true },
+      });
+      for (const entry of entries) {
+        await reverseEntry({
+          accountId,
+          orgId,
+          branchId,
+          userId,
+          entryId: entry.id,
+          narration: `${cfg.resource} ${existing.number} amended`,
+        });
+      }
+
+      const rawExtras = extrasOf(req.body);
+      const nextExtras = {
+        ...spreadExtras(existing),
+        ...(rawExtras ? JSON.parse(rawExtras) : {}),
+      };
+
+      let updated: any;
+      try {
+        updated = await table().update({
+          where: { id: existing.id },
+          data: {
+            number: requestedNumber,
+            date: body.date,
+            dueDate: body.dueDate ?? null,
+            refNo: body.refNo ?? null,
+            refDate: body.refDate ?? null,
+            againstDocId: body.againstDocId ?? null,
+            partyId: body.partyId ?? null,
+            partyName: body.partyName,
+            partyGstin: body.partyGstin ?? null,
+            placeOfSupplyState: body.placeOfSupplyState ?? null,
+            taxType: body.taxType ?? null,
+            subtotal: new Prisma.Decimal(num(body.subtotal).toFixed(2)),
+            cgstTotal: new Prisma.Decimal(num(body.cgstTotal).toFixed(2)),
+            sgstTotal: new Prisma.Decimal(num(body.sgstTotal).toFixed(2)),
+            igstTotal: new Prisma.Decimal(num(body.igstTotal).toFixed(2)),
+            gstTotal: new Prisma.Decimal(num(body.gstTotal).toFixed(2)),
+            total: new Prisma.Decimal(num(body.total).toFixed(2)),
+            status: existing.status,
+            itemsJson: JSON.stringify(body.items || []),
+            extrasJson: Object.keys(nextExtras).length ? JSON.stringify(nextExtras) : null,
+            currency: docCurrency,
+            exchangeRate: new Prisma.Decimal(String(fxRate)),
+            baseTotal: new Prisma.Decimal(toBase(num(body.total), fxRate).toFixed(2)),
+            ...(cfg.extraData ? cfg.extraData(body) : {}),
+          },
+        });
+      } catch (e: any) {
+        const msg = String(e?.message || '');
+        if (msg.includes('UNIQUE constraint failed')) {
+          return res.status(409).json({ error: `Number "${body.number}" is already used by another document.` });
+        }
+        throw e;
+      }
+
+      try {
+        await postEntry({
+          accountId,
+          orgId,
+          branchId,
+          userId,
+          date: body.date,
+          journalCode: cfg.journalCode,
+          narration: `${cfg.resource} ${updated.number} - ${body.partyName}`,
+          sourceDocType: kind,
+          sourceDocId: updated.id,
+          lines: cfg.lines({
+            partyId: body.partyId ?? null,
+            partyName: body.partyName,
+            subtotal: toBase(num(body.subtotal), fxRate),
+            cgstTotal: toBase(num(body.cgstTotal), fxRate),
+            sgstTotal: toBase(num(body.sgstTotal), fxRate),
+            igstTotal: toBase(num(body.igstTotal), fxRate),
+            total: toBase(num(body.total), fxRate),
+            tdsAmount: toBase(num((req.body as any)?.tdsAmount), fxRate),
+          }),
+        });
+      } catch (e: any) {
+        return res.status(Number(e?.status || 400)).json({ error: `Updated document could not be reposted: ${String(e?.message || e)}` });
+      }
+
+      res.json({ document: normalize(updated) });
+    }
+  );
+
+  /**
    * Settlement detail — which bills a note raised on account has been knocked
    * off against, and how much against each.
    *

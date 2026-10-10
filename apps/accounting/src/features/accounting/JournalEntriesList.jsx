@@ -11,6 +11,7 @@ import { formatMoney } from '@ui/utils/money';
 import { reverseJournalOnLedger } from '@ui/utils/journalSync';
 import { exportFormatFromKey, exportMenuItem, runListExport } from '@ui/components/list/exportMenu';
 import { useFeatures } from '@ui/permissions/useFeatures';
+import { tdsReversalEventFrom } from '../tds/engine';
 
 /**
  * The journal list.
@@ -114,11 +115,39 @@ export default function JournalEntriesList({ db, setDb, currentCompany, onNewJou
     });
     if (!ok) return;
 
+    const reverseTdsEvents = (state) => {
+      const events = Array.isArray(state.tdsTransactions) ? state.tdsTransactions : [];
+      const mine = events.filter(
+        (event) =>
+          Number(event?.companyId) === Number(currentCompany.id) &&
+          String(event?.sourceType) === 'journal' &&
+          String(event?.sourceId) === String(jv.id) &&
+          String(event?.status).toLowerCase() === 'posted' &&
+          !event?.reversalOfId
+      );
+      if (!mine.length) return events;
+      let nextId = events.reduce((max, event) => Math.max(max, Number(event?.id) || 0), 0);
+      const stamp = new Date().toISOString();
+      const reversals = mine.map((event) => ({
+        ...tdsReversalEventFrom(event, { reason: `Journal ${jv?.number || jv.id} reversed` }),
+        id: ++nextId,
+      }));
+      return [
+        ...events.map((event) =>
+          mine.some((row) => row.id === event.id)
+            ? { ...event, status: 'Reversed', modifiedBy: reversals[0]?.createdBy || 'User', modifiedAt: stamp }
+            : event
+        ),
+        ...reversals,
+      ];
+    };
+
     if (posted) {
       const { reversed } = await reverseJournalOnLedger(jv);
       if (!reversed) return;
       setDb({
         ...db,
+        tdsTransactions: reverseTdsEvents(db),
         journalEntries: (Array.isArray(db.journalEntries) ? db.journalEntries : []).map((x) =>
           x.companyId === currentCompany.id && String(x.id) === String(jv.id) ? { ...x, status: 'REVERSED' } : x
         ),
@@ -128,6 +157,7 @@ export default function JournalEntriesList({ db, setDb, currentCompany, onNewJou
 
     setDb({
       ...db,
+      tdsTransactions: reverseTdsEvents(db),
       journalEntries: (Array.isArray(db.journalEntries) ? db.journalEntries : []).filter(
         (x) => !(x.companyId === currentCompany.id && String(x.id) === String(jv.id))
       ),
@@ -138,6 +168,9 @@ export default function JournalEntriesList({ db, setDb, currentCompany, onNewJou
     <DocumentListShell
       entity="journal"
       title="Journal Entries"
+      compact
+      tight
+      denseCards
       company={currentCompany}
       search={{
         value: jvSearch.query,
@@ -190,7 +223,7 @@ export default function JournalEntriesList({ db, setDb, currentCompany, onNewJou
         text: 'An entry that reached the ledger is reversed rather than deleted — the original stays, and the opposite entry shows what was undone.',
       }}
     >
-      <div className="ui-table-scroll">
+      <div className="overflow-x-auto ui-table-scroll compact-list-table-scroll" data-fill-viewport>
         <table className="ui-table ui-table-wide ui-table-sticky">
           <thead>
             <tr>
@@ -236,7 +269,7 @@ export default function JournalEntriesList({ db, setDb, currentCompany, onNewJou
                   <td className="ui-col-id">{jv.number}</td>
                   <td className="ui-col-date">{jv.date}</td>
                   <td className="ui-col-entity">
-                    <div>{jv.narration || '-'}</div>
+                    <div className="ui-narration">{jv.narration || '-'}</div>
                     <div className="text-xs ui-muted">{(jv.lines || []).length} lines</div>
                   </td>
                   <td className="ui-col-amount">{formatMoney(jv.totalDebit || 0, currentCompany)}</td>

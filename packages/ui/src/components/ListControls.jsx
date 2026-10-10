@@ -163,7 +163,7 @@ export const ListControls = ({
                       fileName: exportFileName,
                       columns: exportColumns,
                       rows: exportRows,
-                      footNote: `${exportRows.length} row(s) · exported from Clor`,
+                      footNote: `${exportRows.length} row(s) · exported from CLOR`,
                     });
                   }}
                   className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm hover:bg-[rgb(var(--surface-sunken))]"
