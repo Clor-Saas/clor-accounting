@@ -14,10 +14,10 @@ services:
     # devDeps are needed to build (tsc, prisma, tsx); generate all 3 Prisma
     # clients for this platform (linux) before compiling.
     buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
-    # Apply committed migrations to all 3 databases before the release goes live.
-    # Idempotent: already-applied migrations are skipped.
-    preDeployCommand: npm run prisma:deploy
-    startCommand: npm start
+    # Apply committed migrations to all 3 databases, then start. Render's free
+    # tier has no preDeploy hook, so migrations run at boot; migrate deploy is
+    # idempotent, so repeated boots are a no-op once the DBs are up to date.
+    startCommand: npm run prisma:deploy && npm start
     healthCheckPath: /health
     autoDeploy: true
     envVars:
