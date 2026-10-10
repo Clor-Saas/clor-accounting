@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@ui/api/payments', () => ({ createPayment: vi.fn(async () => ({ id: 'srv-1' })) }));
-vi.mock('../../api/cashbank', () => ({ listPaymentModes: vi.fn(async () => []) }), { virtual: true });
+vi.mock('@ui/api/cashbank', () => ({ listPaymentModes: vi.fn(async () => []) }), { virtual: true });
 
 import RecordDisbursementForm from './RecordDisbursementForm';
 

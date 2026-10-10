@@ -191,6 +191,9 @@ export default function ReorderAlerts({ db, setDb, currentCompany }) {
     <DocumentListShell
       entity="items"
       title="Reorder Alerts"
+      compact
+      tight
+      denseCards
       company={currentCompany}
       search={{
         value: raSearch.query,
@@ -229,7 +232,7 @@ export default function ReorderAlerts({ db, setDb, currentCompany }) {
         text: 'An item appears here once it has a reorder level and stock has fallen to it — set the level on the item itself.',
       }}
     >
-      <div className="ui-table-scroll">
+      <div className="overflow-x-auto ui-table-scroll compact-list-table-scroll" data-fill-viewport>
           <table className="ui-table ui-table-wide ui-table-sticky">
             <thead>
               <tr>

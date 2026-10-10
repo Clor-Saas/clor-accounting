@@ -107,3 +107,49 @@ describe('PopupSelect keyboard', () => {
     expect(document.activeElement).toBe(warehouse);
   });
 });
+
+describe('PopupSelect create flow', () => {
+  it('shows a permanent create action as soon as the picker opens', async () => {
+    const user = userEvent.setup();
+    let opened = false;
+    render(
+      <PopupSelect
+        ariaLabel="Unit"
+        value=""
+        onChange={() => {}}
+        options={[{ value: 'Pcs', label: 'Pcs' }]}
+        alwaysSearch
+        actionText="+ Create new unit"
+        onAction={() => { opened = true; }}
+      />
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Unit' }));
+    await user.click(screen.getByRole('button', { name: '+ Create new unit' }));
+    expect(opened).toBe(true);
+  });
+
+  it('can always search and offers creation when the value is missing', async () => {
+    const user = userEvent.setup();
+    let created = '';
+    render(
+      <PopupSelect
+        ariaLabel="Category"
+        title="categories"
+        value=""
+        onChange={() => {}}
+        options={[{ value: 'Beverages', label: 'Beverages' }]}
+        alwaysSearch
+        allowCustom
+        customActionText="Create category"
+        onCustomAction={(value) => { created = value; }}
+      />
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Category' }));
+    await user.type(screen.getByPlaceholderText('Search categories…'), 'Snacks');
+    await user.click(screen.getByRole('button', { name: 'Create category “Snacks”' }));
+
+    expect(created).toBe('Snacks');
+  });
+});

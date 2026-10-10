@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { FileText, Info, NotebookPen, Package, Plus } from 'lucide-react';
+import { FileText, Info, Package } from 'lucide-react';
 
 import FormSection from '@ui/components/ui/FormSection';
 import MasterFormPage from '@ui/components/MasterFormPage';
+import PopupSelect from '@ui/components/pickers/PopupSelect';
+import Drawer from '@ui/components/ui/Drawer';
 import { FieldError } from '@ui/components/ui/Primitives';
 import { FormRow as PartyFormRow } from '../../components/pickers/customerFormParts';
 import { notify } from '@ui/components/ui/notify';
@@ -10,6 +12,7 @@ import { useFieldErrors } from '@ui/components/ui/useFieldErrors';
 import { useFeatures } from '@ui/permissions/useFeatures';
 import { bumpItemCodeSeries, nextItemCode } from '@ui/utils/itemCode';
 import { saveItemToServer } from '@ui/utils/itemSync';
+import { saveMaster } from '@ui/utils/masterSync';
 import { formatMoney, round2 } from '@ui/utils/money';
 
 /**
@@ -129,8 +132,15 @@ const ItemForm = ({
 
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryDescription, setNewCategoryDescription] = useState('');
+  const [savingCategory, setSavingCategory] = useState(false);
+  const closeCategoryDrawer = () => {
+    setNewCategoryOpen(false);
+    setNewCategoryName('');
+    setNewCategoryDescription('');
+  };
 
-  const saveNewCategory = () => {
+  const saveNewCategory = async () => {
     const name = String(newCategoryName || '').trim();
     if (!name) {
       notify.error('Category name is required');
@@ -139,18 +149,31 @@ const ItemForm = ({
     const exists = (db.itemCategories || []).some(
       (c) => c.companyId === currentCompany.id && String(c.name || '').trim().toLowerCase() === name.toLowerCase()
     );
-    if (!exists) {
-      const nextId = Math.max(0, ...(db.itemCategories || []).map((c) => Number(c.id) || 0)) + 1;
-      setDb((prev) => ({
-        ...prev,
-        itemCategories: [...(prev.itemCategories || []), { id: nextId, companyId: currentCompany.id, name, description: '' }],
-      }));
+    if (exists) {
+      notify.error('That category already exists. Select it from the list.');
+      return;
     }
-    setAddedCategories((prev) => (prev.includes(name) ? prev : [...prev, name]));
-    setFormData((prev) => ({ ...prev, category: name }));
-    setNewCategoryName('');
-    setNewCategoryOpen(false);
-    notify.success(`Category "${name}" added.`);
+    const description = String(newCategoryDescription || '').trim();
+    setSavingCategory(true);
+    try {
+      const serverPatch = await saveMaster('itemCategories', name, { description });
+      setDb((prev) => {
+        const nextId = Math.max(0, ...(prev.itemCategories || []).map((c) => Number(c.id) || 0)) + 1;
+        return {
+          ...prev,
+          itemCategories: [
+            ...(prev.itemCategories || []),
+            { id: nextId, companyId: currentCompany.id, name, description, ...serverPatch },
+          ],
+        };
+      });
+      setAddedCategories((prev) => (prev.includes(name) ? prev : [...prev, name]));
+      setFormData((prev) => ({ ...prev, category: name }));
+      closeCategoryDrawer();
+      notify.success(`Category "${name}" created.`);
+    } finally {
+      setSavingCategory(false);
+    }
   };
 
   const trackingValue = String(formData.trackingType || 'NONE');
@@ -165,7 +188,14 @@ const ItemForm = ({
 
   const [newUnitOpen, setNewUnitOpen] = useState(false);
   const [newUnitName, setNewUnitName] = useState('');
-  const saveNewUnit = () => {
+  const [newUnitDescription, setNewUnitDescription] = useState('');
+  const [savingUnit, setSavingUnit] = useState(false);
+  const closeUnitDrawer = () => {
+    setNewUnitOpen(false);
+    setNewUnitName('');
+    setNewUnitDescription('');
+  };
+  const saveNewUnit = async () => {
     const name = String(newUnitName || '').trim();
     if (!name) {
       notify.error('Unit name is required');
@@ -174,17 +204,30 @@ const ItemForm = ({
     const exists = (db.uoms || []).some(
       (u) => u.companyId === currentCompany.id && String(u.name || '').trim().toLowerCase() === name.toLowerCase()
     );
-    if (!exists) {
-      const nextUomId = Math.max(0, ...(db.uoms || []).map((u) => Number(u.id) || 0)) + 1;
-      setDb({
-        ...db,
-        uoms: [...(db.uoms || []), { id: nextUomId, companyId: currentCompany.id, name, createdAt: new Date().toISOString() }],
-      });
+    if (exists) {
+      notify.error('This unit already exists. Select it from the list.');
+      return;
     }
-    setFormData((p) => ({ ...p, unit: name }));
-    setNewUnitOpen(false);
-    setNewUnitName('');
-    notify.success(exists ? `Unit "${name}" selected.` : `Unit "${name}" added.`);
+    const description = String(newUnitDescription || '').trim();
+    setSavingUnit(true);
+    try {
+      const serverPatch = await saveMaster('uoms', name, { description });
+      setDb((prev) => {
+        const nextUomId = Math.max(0, ...(prev.uoms || []).map((u) => Number(u.id) || 0)) + 1;
+        return {
+          ...prev,
+          uoms: [
+            ...(prev.uoms || []),
+            { id: nextUomId, companyId: currentCompany.id, name, description, createdAt: new Date().toISOString(), ...serverPatch },
+          ],
+        };
+      });
+      setFormData((p) => ({ ...p, unit: name }));
+      closeUnitDrawer();
+      notify.success(`Unit "${name}" created.`);
+    } finally {
+      setSavingUnit(false);
+    }
   };
 
   const gstRates = (db.gstRates || [])
@@ -378,6 +421,7 @@ const ItemForm = ({
         icon={FileText}
         title="Basic Details"
         description="Enter the essential information about the item."
+        className="item-master-section"
       >
         {/*
           One grid, both halves placed on its rows, so each field sits opposite
@@ -385,7 +429,7 @@ const ItemForm = ({
           the category down past the item type and every row below it drifted —
           the two sides ended up describing different rows at the same height.
         */}
-        <div className="grid gap-x-14 gap-y-4 lg:grid-cols-2">
+        <div className="grid gap-x-6 gap-y-3 lg:grid-cols-2">
             <PartyFormRow className="lg:col-start-1 lg:row-start-1" label="Item Name" required htmlFor="item-name">
               <input
                 id="item-name"
@@ -439,7 +483,7 @@ const ItemForm = ({
               label="Taxability"
               required
               htmlFor="item-taxability"
-              hint="Exempt, nil rated and non-GST are three different answers on the return, and none of them is a rate of zero."
+              hint="Exempt, nil rated and non-GST are distinct GST treatments."
             >
               <select
                 id="item-taxability"
@@ -468,7 +512,22 @@ const ItemForm = ({
               </div>
             </PartyFormRow>
 
-            <PartyFormRow className="lg:col-start-2 lg:row-start-1" label="Item Code" htmlFor="item-code" hint="Allotted from the series this type is numbered on.">
+            <PartyFormRow className="lg:col-start-1 lg:row-start-6" label="MRP" htmlFor="item-mrp">
+              <div className="relative">
+                <span className="ui-subtle pointer-events-none absolute inset-y-0 start-3 flex items-center text-sm">₹</span>
+                <input
+                  id="item-mrp"
+                  type="number"
+                  step="0.01"
+                  value={formData.mrp}
+                  onChange={(e) => setFormData({ ...formData, mrp: e.target.value })}
+                  className="ui-input ui-money w-full ps-7"
+                  placeholder="0.00"
+                />
+              </div>
+            </PartyFormRow>
+
+            <PartyFormRow className="lg:col-start-2 lg:row-start-1" label="Item Code" htmlFor="item-code" hint="Automatically allotted.">
               <input
                 id="item-code"
                 type="text"
@@ -478,117 +537,39 @@ const ItemForm = ({
                 className="ui-input ui-mono w-full cursor-not-allowed"
                 placeholder="No codes available"
               />
-              <p className="ui-caption mt-1">Automatically allotted and cannot be edited.</p>
             </PartyFormRow>
 
-            <PartyFormRow className="lg:col-start-2 lg:row-start-2" label="Category / Item Group" htmlFor="item-category">
-              <div className="flex items-center gap-2">
-                <select
-                  id="item-category"
-                  value={formData.category || ''}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  /* A category named in full — "Electrical fittings and
-                     switchgear accessories" — is longer than any select that
-                     shares its row with a button. The list shows it whole; this
-                     is for the one already chosen. */
-      title={formData.category || undefined}
-                  className="ui-select min-w-0 flex-1"
-                >
-                  <option value="">Select category</option>
-                  {categoryNames.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                  {formData.category && !categoryNames.includes(formData.category) ? (
-                    <option value={formData.category}>{formData.category} (not in the master)</option>
-                  ) : null}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setNewCategoryOpen(true)}
-                  className="ui-btn ui-btn-secondary shrink-0"
-                >
-                  <Plus size={14} aria-hidden="true" /> New
-                </button>
-              </div>
-
-              {newCategoryOpen ? (
-                <div className="ui-sunken mt-2 space-y-2 rounded-lg border p-3">
-                  <label className="ui-label" htmlFor="item-new-category">New category</label>
-                  <input
-                    id="item-new-category"
-                    type="text"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    className="ui-input w-full"
-                    placeholder="e.g. Beverages"
-                    autoFocus
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewCategoryOpen(false);
-                        setNewCategoryName('');
-                      }}
-                      className="ui-btn ui-btn-secondary ui-btn-sm text-xs"
-                    >
-                      Cancel
-                    </button>
-                    <button type="button" onClick={saveNewCategory} className="ui-btn ui-btn-primary ui-btn-sm text-xs">
-                      Add category
-                    </button>
-                  </div>
-                </div>
-              ) : null}
+            <PartyFormRow className="lg:col-start-2 lg:row-start-2" label="Category / Item Group">
+              <PopupSelect
+                ariaLabel="Category / Item Group"
+                title="categories"
+                value={formData.category || ''}
+                onChange={(category) => setFormData((prev) => ({ ...prev, category }))}
+                options={categoryNames.map((name) => ({ value: name, label: name }))}
+                placeholder="Search or select category"
+                alwaysSearch
+                actionText="+ Create new category"
+                onAction={() => setNewCategoryOpen(true)}
+                icon={null}
+              />
             </PartyFormRow>
 
-            <PartyFormRow className="lg:col-start-2 lg:row-start-3" label="Unit of Measurement" required htmlFor="item-unit">
-              <div className="flex items-center gap-2">
-                <select
-                  id="item-unit"
-                  value={unitValue}
-                  onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                  className="ui-select min-w-0 flex-1"
-                >
-                  {unitValue && !uomNames.includes(unitValue) ? (
-                    <option value={unitValue}>{unitValue} (legacy)</option>
-                  ) : null}
-                  {uoms.length === 0 ? <option value={unitValue || 'Pcs'}>{unitValue || 'Pcs'}</option> : null}
-                  {uoms.map((u) => (
-                    <option key={u.id} value={u.name}>{u.name}</option>
-                  ))}
-                </select>
-                <button type="button" onClick={() => setNewUnitOpen(true)} className="ui-btn ui-btn-secondary shrink-0">
-                  <Plus size={14} aria-hidden="true" /> New
-                </button>
-              </div>
-
-              {newUnitOpen ? (
-                <div className="mt-2 flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newUnitName}
-                    onChange={(e) => setNewUnitName(e.target.value)}
-                    className="ui-input min-w-0 flex-1"
-                    placeholder="e.g. Box"
-                    aria-label="New unit"
-                    autoFocus
-                  />
-                  <button type="button" onClick={saveNewUnit} className="ui-btn ui-btn-primary text-xs">
-                    Add
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewUnitOpen(false);
-                      setNewUnitName('');
-                    }}
-                    className="ui-btn ui-btn-secondary text-xs"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : null}
+            <PartyFormRow className="lg:col-start-2 lg:row-start-3" label="Unit of Measurement" required>
+              <PopupSelect
+                ariaLabel="Unit of Measurement"
+                title="units"
+                value={unitValue}
+                onChange={(unit) => setFormData((prev) => ({ ...prev, unit }))}
+                options={[
+                  ...(unitValue && !uomNames.includes(unitValue) ? [{ value: unitValue, label: unitValue }] : []),
+                  ...uoms.map((u) => ({ value: u.name, label: u.name })),
+                ]}
+                placeholder="Search or select unit"
+                alwaysSearch
+                actionText="+ Create new unit"
+                onAction={() => setNewUnitOpen(true)}
+                icon={null}
+              />
             </PartyFormRow>
 
             {/* Only a taxable item is asked for a rate; the other three
@@ -599,7 +580,6 @@ const ItemForm = ({
                 label="GST Rate"
                 required
                 htmlFor="item-gst"
-                hint="From the GST Rate master, so a rate nobody maintains cannot be typed in."
               >
                 <select
                   id="item-gst"
@@ -637,15 +617,50 @@ const ItemForm = ({
         </div>
       </FormSection>
 
+      <Drawer open={newCategoryOpen} onClose={closeCategoryDrawer} title="New category" widthClass="w-[min(26rem,92vw)]">
+        <div className="space-y-4">
+          <div>
+            <label className="ui-label" htmlFor="item-new-category">Category name <span className="text-[rgb(var(--neg))]">*</span></label>
+            <input id="item-new-category" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="ui-input mt-1 w-full" placeholder="e.g. Beverages" autoFocus />
+          </div>
+          <div>
+            <label className="ui-label" htmlFor="item-new-category-description">Description</label>
+            <textarea id="item-new-category-description" rows={3} value={newCategoryDescription} onChange={(e) => setNewCategoryDescription(e.target.value)} className="ui-input mt-1 w-full resize-none" placeholder="Optional description" />
+          </div>
+          <div className="flex justify-end gap-2 border-t pt-4">
+            <button type="button" onClick={closeCategoryDrawer} className="ui-btn ui-btn-secondary">Close</button>
+            <button type="button" onClick={saveNewCategory} disabled={savingCategory} className="ui-btn ui-btn-primary">{savingCategory ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+      </Drawer>
+
+      <Drawer open={newUnitOpen} onClose={closeUnitDrawer} title="New unit" widthClass="w-[min(26rem,92vw)]">
+        <div className="space-y-4">
+          <div>
+            <label className="ui-label" htmlFor="item-new-unit">Unit name <span className="text-[rgb(var(--neg))]">*</span></label>
+            <input id="item-new-unit" value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} className="ui-input mt-1 w-full" placeholder="e.g. Pcs, Kg, Hours" autoFocus />
+          </div>
+          <div>
+            <label className="ui-label" htmlFor="item-new-unit-description">Description</label>
+            <textarea id="item-new-unit-description" rows={3} value={newUnitDescription} onChange={(e) => setNewUnitDescription(e.target.value)} className="ui-input mt-1 w-full resize-none" placeholder="Optional description" />
+          </div>
+          <div className="flex justify-end gap-2 border-t pt-4">
+            <button type="button" onClick={closeUnitDrawer} className="ui-btn ui-btn-secondary">Close</button>
+            <button type="button" onClick={saveNewUnit} disabled={savingUnit} className="ui-btn ui-btn-primary">{savingUnit ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+      </Drawer>
+
       {/* A service is not counted, so none of this applies to one. */}
       {isGoods ? (
         <FormSection
           icon={Package}
           title="Inventory Details"
-          description="Configure inventory settings for this item (applicable for goods only)."
+          description="Configure stock settings for goods."
+          className="item-master-section"
         >
-          <div className="space-y-4">
-            <PartyFormRow label="Track Inventory" hint="Off, this item is bought and sold without a quantity being kept.">
+          <div className="space-y-3">
+            <PartyFormRow label="Track Inventory" hint="Turn off when this item does not need quantity tracking.">
               <div className="flex items-center gap-6 pt-1.5">
                 {[
                   { v: true, l: 'Yes' },
@@ -657,7 +672,13 @@ const ItemForm = ({
                       name="trackInventory"
                       className="ui-radio"
                       checked={formData.trackInventory !== false === o.v}
-                      onChange={() => setFormData({ ...formData, trackInventory: o.v })}
+                      onChange={() =>
+                        setFormData({
+                          ...formData,
+                          trackInventory: o.v,
+                          trackingType: o.v ? formData.trackingType : 'NONE',
+                        })
+                      }
                     />
                     {o.l}
                   </label>
@@ -725,7 +746,7 @@ const ItemForm = ({
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-3">
                   <div>
                     <label className="ui-label" htmlFor="item-open-branch">
                       Branch <span style={{ color: 'rgb(var(--neg))' }}>*</span>
@@ -768,17 +789,6 @@ const ItemForm = ({
                     </select>
                     <FieldError error={itemErrors.error('openingWarehouseId')} id={itemErrors.errorId('openingWarehouseId')} />
                   </div>
-                </div>
-
-                <p
-                  className="flex items-start gap-2 rounded-lg px-3 py-2 text-sm"
-                  style={{ backgroundColor: 'rgb(var(--brand) / 0.06)' }}
-                >
-                  <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0" style={{ color: 'rgb(var(--brand))' }} />
-                  Opening stock will be recorded in the selected branch and warehouse.
-                </p>
-
-                <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="ui-label" htmlFor="item-reorder">Reorder level</label>
                     <input
@@ -789,41 +799,34 @@ const ItemForm = ({
                       className="ui-input ui-money w-full"
                       placeholder="0"
                     />
-                    <p className="ui-caption mt-1">Below this, the item is reported as running out.</p>
                   </div>
                 </div>
               </>
             ) : null}
 
-            {batchCapable ? (
-              <div className="space-y-2 border-t pt-4" style={{ borderColor: 'rgb(var(--border))' }}>
-                <label className="flex cursor-pointer items-start gap-2 text-sm">
+            {tracksStock && batchCapable ? (
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-2 border-t pt-3" style={{ borderColor: 'rgb(var(--border))' }}>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    className="ui-checkbox mt-0.5"
+                    className="ui-checkbox"
                     checked={batchEnabled}
                     onChange={(e) => setFormData({ ...formData, trackingType: e.target.checked ? 'BATCH' : 'NONE' })}
                   />
                   <span>
                     Track batches
-                    <span className="block text-xs ui-muted">
-                      Purchases, sales and transfers of this item will ask for a batch number.
-                    </span>
                   </span>
                 </label>
-                <label className={`flex items-start gap-2 text-sm ${batchEnabled ? 'cursor-pointer' : 'ui-subtle cursor-not-allowed'}`}>
+                <label className={`flex items-center gap-2 text-sm ${batchEnabled ? 'cursor-pointer' : 'ui-subtle cursor-not-allowed'}`}>
                   <input
                     type="checkbox"
-                    className="ui-checkbox mt-0.5"
+                    className="ui-checkbox"
                     checked={formData.trackingType === 'BATCH_EXPIRY'}
                     disabled={!batchEnabled}
                     onChange={(e) => setFormData({ ...formData, trackingType: e.target.checked ? 'BATCH_EXPIRY' : 'BATCH' })}
                   />
                   <span>
                     Track expiry
-                    <span className="block text-xs ui-muted">
-                      Each batch also carries an expiry date, and the oldest is used first.
-                    </span>
                   </span>
                 </label>
               </div>
@@ -831,58 +834,6 @@ const ItemForm = ({
           </div>
         </FormSection>
       ) : null}
-
-      <FormSection
-        icon={NotebookPen}
-        title="Additional Information"
-        description="Add any additional notes or description about the item."
-      >
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div>
-            <label className="ui-label" htmlFor="item-description">Description</label>
-            <textarea
-              id="item-description"
-              rows={3}
-              maxLength={500}
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="ui-input w-full"
-              placeholder="Enter description (optional)"
-            />
-            <div className="ui-caption mt-1 text-end">{String(formData.description || '').length}/500</div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="ui-label" htmlFor="item-barcode">Barcode</label>
-              <input
-                id="item-barcode"
-                type="text"
-                value={formData.barcode}
-                onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                className="ui-input ui-mono w-full"
-                placeholder="Scanned or typed"
-              />
-            </div>
-
-            <div>
-              <label className="ui-label" htmlFor="item-mrp">MRP</label>
-              <div className="relative">
-                <span className="ui-subtle pointer-events-none absolute inset-y-0 start-3 flex items-center text-sm">₹</span>
-                <input
-                  id="item-mrp"
-                  type="number"
-                  step="0.01"
-                  value={formData.mrp}
-                  onChange={(e) => setFormData({ ...formData, mrp: e.target.value })}
-                  className="ui-input ui-money w-full ps-7"
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </FormSection>
 
       {/* On a screen the bar at the top carries this; a second full-width
           button under the fields would be the same action twice. */}
@@ -897,11 +848,11 @@ const ItemForm = ({
   /* A screen names itself and keeps its actions at the top; a dialog is already
      named by the dialog and keeps them at the foot. */
   return (
-    <form onSubmit={handleSubmit} noValidate className={fullPage ? '' : 'space-y-4'}>
+    <form onSubmit={handleSubmit} noValidate className={`item-master-form ${fullPage ? '' : 'space-y-4'}`}>
       {fullPage ? (
         <MasterFormPage
           title={isEdit ? 'Edit Item' : 'Create Item'}
-          subtitle="Add a new item to manage your inventory, sales and purchase."
+          subtitle="Add or update the item details used in transactions."
           onBack={onClose}
           primaryLabel={isEdit ? 'Save Item' : 'Save Item'}
           /*

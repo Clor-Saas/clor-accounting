@@ -7,6 +7,7 @@ vi.mock('@ui/api/purchaseDocs', () => ({
   deleteDocApi: vi.fn(async () => ({})),
   hasApiSession: () => false,
   saveSettlementApi: vi.fn(async () => ({})),
+  updateDocApi: vi.fn(async () => ({})),
 }));
 
 import { BillsList, PurchaseOrdersList, DebitNotesList } from './index';
@@ -76,8 +77,16 @@ describe.each(PAGES)('$name, laid out like every other list', (page) => {
     expect(screen.getByRole('region', { name: /Summary/i }).children).toHaveLength(5);
   });
 
-  it('offers status as tabs with counts', () => {
+  it('offers status filtering with counts', () => {
     render(page.render());
+    if (page.name === 'Purchase Invoices') {
+      const status = screen.getByRole('combobox', { name: /Bill status/i });
+      const search = screen.getByLabelText(page.search);
+      expect(status.querySelectorAll('option').length).toBeGreaterThanOrEqual(3);
+      for (const option of status.querySelectorAll('option')) expect(option.textContent).toMatch(/\d/);
+      expect(status.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      return;
+    }
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab');
     expect(tabs.length).toBeGreaterThanOrEqual(3);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');

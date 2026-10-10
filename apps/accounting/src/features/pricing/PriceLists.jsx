@@ -269,6 +269,8 @@ export default function PriceLists({ db, setDb, currentCompany }) {
       <DocumentListShell
         entity="category"
         title="Price Lists"
+        compact
+        tight
         company={currentCompany}
         search={{
           value: plSearch.query,
@@ -332,6 +334,7 @@ export default function PriceLists({ db, setDb, currentCompany }) {
           { label: 'Pricing nothing', value: plHeadline.empty, count: true, tone: 'outstanding', Icon: Ban },
           { label: 'Expired', value: plHeadline.expired, count: true, tone: 'overdue', Icon: CalendarX },
         ]}
+        denseCards
         tabs={[
           { value: 'All', label: 'All', tone: 'all' },
           { value: 'Active', label: 'Active', tone: 'paid' },
@@ -339,20 +342,16 @@ export default function PriceLists({ db, setDb, currentCompany }) {
           { value: 'Expired', label: 'Expired', tone: 'overdue' },
         ]}
         tabsLabel="Price list status"
+        statusInHeader
         statusValue={statusFilter}
         statusCounts={counts}
         onStatusChange={(v) => {
           setStatusFilter(v);
           setPage(1);
         }}
-        tip={{
-          storageKey: 'neev.tip.priceLists',
-          Icon: Tags,
-          text: 'A list with no rates on it prices nothing — the invoice falls back to the item’s own price and says nothing about it.',
-        }}
       >
-        <div className="ui-table-scroll">
-              <table className="ui-table ui-table-wide ui-table-sticky">
+        <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 11.5rem)' }}>
+              <table className={`ui-table ui-table-wide ui-table-sticky ${pageRows.length ? '' : 'cash-bank-empty-table'}`}>
                 <thead>
                   <tr>
                     <th scope="col">Price list name</th>

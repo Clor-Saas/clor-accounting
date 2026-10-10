@@ -59,12 +59,15 @@ describe('what the form shows follows what the item is', () => {
   it('asks nothing about opening stock for goods nobody counts', () => {
     renderForm();
     expect(screen.getByLabelText('Opening Stock')).toBeInTheDocument();
+    expect(screen.getByLabelText('Track batches')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: 'No' }));
     expect(inventory()).toBeInTheDocument();
     for (const field of ['Opening Stock', 'Opening Stock Rate', 'Opening Stock Date']) {
       expect(screen.queryByLabelText(field)).toBeNull();
     }
     expect(screen.queryByLabelText(/^Warehouse/)).toBeNull();
+    expect(screen.queryByLabelText('Track batches')).toBeNull();
+    expect(screen.queryByLabelText('Track expiry')).toBeNull();
   });
 
   it('asks for a rate only where one applies', () => {
@@ -84,6 +87,7 @@ describe('what the form shows follows what the item is', () => {
     expect(rate.tagName).toBe('SELECT');
     expect([...rate.options].map((o) => o.textContent)).toEqual(['5%', '18%']);
   });
+
 });
 
 describe('where the opening stock goes', () => {

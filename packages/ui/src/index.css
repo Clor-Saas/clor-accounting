@@ -10,7 +10,7 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
-   Clor — design tokens.
+   CLOR — design tokens.
 
    Palette per the product brief: orange carries the identity, blue is
    informational only. Blue never appears on chrome, navigation or a call to
@@ -423,29 +423,15 @@
   --z-palette: 160;         /* the command palette reaches over everything */
   --z-tooltip: 180;         /* last word, and never interactive */
 
-  /*
-   * The platform, above every layer an app can produce.
-   *
-   * Everything above belongs to one application: its header, its drawers, its
-   * dialogs, its command palette. The bar that carries the app switcher and
-   * the company is not part of any of them — it is the thing they are drawn
-   * inside — so it has to outrank all of them, and its menu has to outrank the
-   * bar. At z-30 the switcher opened *behind* the app's own header and the
-   * form beneath it, which made the one control that leaves an app the one
-   * control an app could hide.
-   */
-  --z-platform-bar: 200;
-  --z-platform-menu: 210;
-
-  --radius-btn: 0.5rem;     /* 8px — buttons and rows */
-  --radius-input: 0.5rem;   /* 8px — measured off the reference's own controls */
-  --radius-sm: 0.5rem;      /* 8px — chips */
-  --radius: 0.75rem;        /* 12px — cards, panels */
-  --radius-lg: 0.75rem;     /* 12px */
-  --radius-xl: 0.875rem;    /* 14px — large modals, the one exception */
+  --radius-btn: 0.25rem;
+  --radius-input: 0.25rem;
+  --radius-sm: 0.25rem;
+  --radius: 0.25rem;
+  --radius-lg: 0.25rem;
+  --radius-xl: 0.375rem;
   /* The figures across an overview. Square on purpose: at 12px five small
      cards in a row read as five pills rather than five panels of figures. */
-  --radius-kpi: 0;
+  --radius-kpi: 0.25rem;
 
   /* Layout */
   --sidebar-w: 260px;
@@ -456,9 +442,9 @@
      product that genuinely wants the width. */
   --content-max: 1920px;
 
-  --shadow-card: 0 1px 2px 0 rgb(17 24 39 / 0.03), 0 1px 1px 0 rgb(17 24 39 / 0.02);
-  --shadow-pop: 0 4px 12px -2px rgb(17 24 39 / 0.06), 0 12px 32px -12px rgb(17 24 39 / 0.10);
-  --shadow-lift: 0 2px 4px -1px rgb(17 24 39 / 0.04), 0 12px 28px -10px rgb(17 24 39 / 0.10);
+  --shadow-card: 0 1px 2px rgb(11 31 68 / 0.04);
+  --shadow-pop: 0 4px 12px rgb(11 31 68 / 0.10);
+  --shadow-lift: 0 4px 14px rgb(11 31 68 / 0.12);
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
@@ -680,25 +666,26 @@
   --shadow-lift: 0 12px 32px -12px rgb(0 0 0 / 0.65), 0 2px 8px -2px rgb(0 0 0 / 0.4);
 }
 
-/* Graphite theme: monochrome product chrome with colour reserved for financial meaning. */
+/* CLOR enterprise theme: compact SAP/Fiori-inspired accounting chrome. */
 :root {
-  --app-bg: 244 244 245; --surface: 255 255 255; --surface-raised: 255 255 255;
-  --surface-sunken: 247 247 248; --border: 228 228 231; --border-strong: 161 161 170;
-  --border-field: 212 212 216; --doc-section: 250 250 250;
-  --fg: 9 9 11; --fg-muted: 63 63 70; --fg-subtle: 113 113 122;
-  --brand: 24 24 27; --brand-deep: 9 9 11; --brand-hover: 39 39 42; --brand-pressed: 9 9 11;
-  --brand-soft: 244 244 245; --brand-subtle: 250 250 250; --brand-border: 212 212 216;
-  --brand-ink: 24 24 27; --brand-panel: 9 9 11; --on-brand: 255 255 255;
+  --app-bg: 243 243 240; --surface: 255 255 255; --surface-raised: 255 255 255;
+  --surface-sunken: 244 244 245; --border: 212 212 216; --border-strong: 161 161 170;
+  --border-field: 161 161 170; --doc-section: 250 250 250;
+  --fg: 24 24 27; --fg-muted: 82 82 91; --fg-subtle: 113 113 122;
+  --brand: 39 39 42; --brand-deep: 24 24 27; --brand-hover: 63 63 70; --brand-pressed: 9 9 11;
+  --brand-soft: 228 228 231; --brand-subtle: 244 244 245; --brand-border: 161 161 170;
+  --brand-ink: 24 24 27; --brand-panel: 39 39 42; --on-brand: 255 255 255;
   --doc-link: 39 39 42; --doc-link-wash: 244 244 245; --accent-soft: var(--brand-soft);
-  --ring: 63 63 70; --link: 39 39 42; --link-hover: 9 9 11; --info: 82 82 91; --info-soft: 244 244 245;
-  --st-all-soft: 244 244 245; --st-all-strong: 228 228 231; --st-all-key: 39 39 42; --st-all-ink: 24 24 27;
-  --nav-fg: 24 24 27; --nav-fg-muted: 82 82 91; --nav-fg-subtle: 113 113 122;
-  --rail-bg: 255 255 255; --rail-border: 228 228 231; --rail-hover: 244 244 245; --rail-active: 228 228 231;
-  --heading-bg: 245 247 250; --heading-hover: 238 242 247;
-  --nav-dashboard: 212 212 216; --nav-sales: 212 212 216; --nav-crm: 212 212 216;
-  --nav-purchases: 212 212 216; --nav-cashbank: 212 212 216; --nav-expenses: 212 212 216;
-  --nav-inventory: 212 212 216; --nav-journal: 212 212 216; --nav-approvals: 212 212 216;
-  --nav-reports: 212 212 216; --nav-masterdata: 212 212 216; --nav-settings: 212 212 216;
+  --ring: 39 39 42; --link: 39 39 42; --link-hover: 9 9 11; --info: 63 63 70; --info-soft: 244 244 245;
+  --st-all-soft: 244 244 245; --st-all-strong: 212 212 216; --st-all-key: 39 39 42; --st-all-ink: 24 24 27;
+  --nav-fg: 24 24 27; --nav-fg-muted: 63 63 70; --nav-fg-subtle: 82 82 91;
+  --rail-bg: 244 244 245; --rail-border: 212 212 216; --rail-hover: 228 228 231; --rail-active: 255 217 102;
+  --heading-bg: 234 242 248; --heading-hover: 220 234 244; --page-heading-bg: 234 242 248; --header-bg: 244 244 245;
+  --cursor-bg: 255 255 255; --cursor-fg: 9 9 11;
+  --nav-dashboard: 39 39 42; --nav-sales: 39 39 42; --nav-crm: 39 39 42;
+  --nav-purchases: 39 39 42; --nav-cashbank: 39 39 42; --nav-expenses: 39 39 42;
+  --nav-inventory: 39 39 42; --nav-journal: 39 39 42; --nav-approvals: 39 39 42;
+  --nav-reports: 39 39 42; --nav-masterdata: 39 39 42; --nav-settings: 39 39 42;
   --nav-dashboard-ink: 244 244 245; --nav-sales-ink: 244 244 245; --nav-crm-ink: 244 244 245;
   --nav-purchases-ink: 244 244 245; --nav-cashbank-ink: 244 244 245; --nav-expenses-ink: 244 244 245;
   --nav-inventory-ink: 244 244 245; --nav-journal-ink: 244 244 245; --nav-approvals-ink: 244 244 245;
@@ -715,6 +702,9 @@
   --kpi-due-bg: 250 250 250; --kpi-due-ink: 63 63 70;
   --kpi-overdue-bg: 254 242 242; --kpi-overdue-ink: 185 28 28;
   --kpi-credit-bg: 244 244 245; --kpi-credit-ink: 39 39 42;
+  --pos: 16 126 62; --pos-soft: 235 247 239;
+  --neg: 187 0 0; --neg-hover: 153 0 0; --neg-soft: 253 237 237;
+  --warn: 233 115 12; --warn-ink: 154 70 0; --warn-soft: 255 244 230;
 }
 
 :root[data-theme='dark'] {
@@ -728,7 +718,8 @@
   --link: 212 212 216; --link-hover: 250 250 250; --info: 161 161 170; --info-soft: 39 39 42;
   --st-all-soft: 39 39 42; --st-all-strong: 63 63 70; --st-all-key: 212 212 216; --st-all-ink: 244 244 245;
   --rail-bg: 3 3 4; --rail-border: 39 39 42; --rail-hover: 24 24 27; --rail-active: 63 63 70;
-  --heading-bg: 39 39 42; --heading-hover: 63 63 70;
+  --heading-bg: 39 39 42; --heading-hover: 63 63 70; --page-heading-bg: 24 24 27;
+  --cursor-bg: 24 24 27; --cursor-fg: 250 250 250;
   --nav-fg: 244 244 245; --nav-fg-muted: 161 161 170; --nav-fg-subtle: 113 113 122;
   --nav-dashboard: 212 212 216; --nav-sales: 212 212 216; --nav-crm: 212 212 216;
   --nav-purchases: 212 212 216; --nav-cashbank: 212 212 216; --nav-expenses: 212 212 216;
@@ -1325,6 +1316,44 @@
     min-height: 1.75rem;
   }
 
+  /* Every list reserves only enough room for its row menu. This keeps a blank
+     action heading from consuming the width of a real data column. */
+  .ui-table thead th:last-child:has(> .sr-only):not(.ui-num),
+  .ui-table tbody td:last-child:has(button[aria-label*='actions' i], button[title='Actions']) {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    max-width: 2.75rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+    text-align: center;
+  }
+
+  /* The ellipsis itself is the action affordance in a dense data grid. */
+  .ui-table tbody td:last-child > button[aria-label*='actions' i],
+  .ui-table tbody td:last-child > button[title='Actions'],
+  .ui-table tbody td:last-child > div > button[aria-label*='actions' i],
+  .ui-table tbody td:last-child > div > button[title='Actions'] {
+    width: 2rem;
+    height: 2rem;
+    min-height: 2rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ui-table .ui-action-col {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    max-width: 2.75rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+    text-align: center;
+  }
+
   /* The quiet second line under a value: "in 30 days" under a due date,
      "1 of 12" under a schedule. */
   .ui-cell-sub {
@@ -1895,8 +1924,13 @@
     width: 2rem;
     height: 2rem;
     border-radius: 0.5rem;
-    background-color: rgb(var(--brand));
-    color: rgb(var(--on-brand));
+    background-color: transparent;
+    color: rgb(var(--fg));
+  }
+  .ui-brand-mark img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
 
   /* --- badges --- */
@@ -1957,6 +1991,34 @@
        and does not belong to a trigger. */
     animation: ui-pop var(--dur-surface) var(--ease-out) both;
     transform-origin: center;
+  }
+
+  /* Print only the customer document. The modal chrome, action menus and the
+     application behind it remain mounted for focus/state restoration, but are
+     never part of the paper or a browser-generated PDF. */
+  @media print {
+    body.print-mode > *:not(.invoice-print-host) { display: none !important; }
+    body.print-mode .invoice-print-host {
+      display: block !important;
+      position: static !important;
+      width: 100% !important;
+      margin: 0 !important;
+      padding: var(--invoice-page-margin, 10mm) !important;
+      box-sizing: border-box !important;
+      background: #fff !important;
+    }
+    body.print-mode .invoice-print-host > * {
+      border: 0 !important;
+      box-shadow: none !important;
+    }
+  }
+
+  .invoice-print-host {
+    position: fixed;
+    left: -100000px;
+    top: 0;
+    z-index: -1;
+    background: #fff;
   }
   .ui-scrim { animation: ui-fade var(--dur-state) linear both; }
   @media (prefers-reduced-motion: reduce) {
@@ -2057,10 +2119,22 @@
   }
 
   .ui-table-scroll {
-    height: var(--table-scroll-h, calc(100dvh - 21rem));
-    max-height: var(--table-scroll-h, calc(100dvh - 21rem));
+    height: var(--table-scroll-h, calc(100dvh - 18rem));
+    max-height: var(--table-scroll-h, calc(100dvh - 18rem));
     min-height: 8rem;
     overflow: auto;
+  }
+  .cash-bank-empty-table {
+    width: 100%;
+    height: 100%;
+  }
+  .cash-bank-empty-table tbody,
+  .cash-bank-empty-table tbody tr,
+  .cash-bank-empty-table tbody td {
+    height: 100%;
+  }
+  .cash-bank-empty-table tbody td {
+    background-color: rgb(var(--surface));
   }
   /* An empty list, centred on what you can see.
      The empty state used to live in a cell that spanned the table, and the
@@ -2728,7 +2802,11 @@
   /* min(…, 100%): the 1600px cap alone let a 60rem table stretch the whole
      content column past a phone viewport, panning the page instead of
      scrolling inside its card. */
-  .ui-content { max-width: min(var(--content-max), 100%); margin-inline: auto; }
+  .ui-content {
+    max-width: min(var(--content-max), 100%);
+    margin-inline: auto;
+    background-color: rgb(var(--surface));
+  }
 }
 
 @layer components {
@@ -3087,6 +3165,76 @@
     margin-bottom: 0.375rem;
   }
 
+  /* Transaction-entry screens share one compact working density. The action
+     bar, document head and first line stay visible together on a laptop, while
+     settings and sign-in forms keep their more relaxed spacing. */
+  .ui-creation-form .ui-doc-section {
+    padding: 0.75rem;
+  }
+  .ui-creation-form > :first-child {
+    margin-top: -0.75rem;
+    margin-inline: -0.75rem;
+    margin-bottom: 0;
+    padding: 0.4375rem 0.625rem;
+    min-height: 2.875rem;
+  }
+  .ui-creation-form > :first-child .ui-t-doc {
+    font-size: 0.9375rem !important;
+    line-height: 1.25rem !important;
+  }
+  .ui-creation-form > :first-child .ui-btn {
+    min-height: 2rem;
+    height: 2rem;
+    padding-block: 0.25rem;
+  }
+  .ui-creation-form .ui-label {
+    margin-bottom: 0.1875rem;
+  }
+  .ui-creation-form .ui-input,
+  .ui-creation-form .ui-select {
+    min-height: 2rem;
+    height: 2rem;
+    padding-block: 0.25rem;
+    font-size: 0.8125rem;
+  }
+  .ui-creation-form .ui-sec-head {
+    margin-bottom: 0.375rem;
+  }
+  .ui-creation-form .gap-y-4 {
+    row-gap: 0.75rem;
+  }
+  .ui-creation-form .gap-x-6 {
+    column-gap: 1rem;
+  }
+  .ui-creation-form .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.75rem;
+  }
+  .ui-creation-form .ui-table th,
+  .ui-creation-form .ui-table td {
+    padding-block: 0.375rem;
+  }
+
+  /* Keep the familiar two-column item form while fitting more of it on a
+     laptop screen. */
+  .item-master-form > .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.75rem;
+  }
+  .item-master-section {
+    padding: 0.875rem 1rem;
+  }
+  .item-master-section > .mt-5 {
+    margin-top: 0.75rem;
+  }
+  .item-master-section > div:first-child span[aria-hidden='true'] {
+    width: 2rem;
+    height: 2rem;
+  }
+  .item-master-form .ui-input,
+  .item-master-form .ui-select {
+    min-height: 2.25rem;
+    height: 2.25rem;
+  }
+
   /* --- a feature row -------------------------------------------------------
      Forty capabilities read as a list, not forty cards. One divider, a fixed
      height so the eye can run down the controls, and the only colour is the
@@ -3163,6 +3311,97 @@
     line-height: 1rem;
     color: rgb(var(--fg-muted));
     margin: 0.0625rem 0 0;
+  }
+
+  /* The invoice is the highest-frequency document screen. Keep its first
+     working view compact so customer, dates, the first line and totals remain
+     visible together on a normal desktop, while longer invoices can still
+     grow naturally. These overrides are intentionally invoice-only. */
+  .invoice-editor .ui-doc-section {
+    padding: 0.75rem;
+  }
+  .invoice-page-shell,
+  .invoice-page-shell > div {
+    width: 100%;
+    max-width: none;
+  }
+  /* Cancel the compact page card's inset and keep the action bar shallow.
+     The saved top space becomes room for additional invoice rows. */
+  .invoice-editor > :first-child {
+    margin: -0.5rem -0.5rem 0.25rem;
+    padding: 0.4375rem 0.625rem;
+    min-height: 2.875rem;
+    gap: 0.5rem;
+  }
+  .invoice-editor > :first-child .ui-t-doc {
+    font-size: 0.9375rem !important;
+    line-height: 1.25rem !important;
+  }
+  .invoice-editor > :first-child .ui-btn {
+    min-height: 2rem;
+    height: 2rem;
+    padding-block: 0.25rem;
+  }
+  .invoice-editor .invoice-head .ui-label {
+    margin-bottom: 0.1875rem;
+  }
+  .invoice-editor .invoice-head .ui-input,
+  .invoice-editor .invoice-head .ui-select {
+    min-height: 2rem;
+    height: 2rem;
+    padding-block: 0.25rem;
+    font-size: 0.8125rem;
+  }
+  .invoice-editor .invoice-address {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 0.6875rem;
+    line-height: 0.875rem;
+  }
+  .invoice-editor .ui-sec-head {
+    margin-bottom: 0.375rem;
+  }
+  .invoice-editor .invoice-lines-head {
+    min-height: 2rem;
+    justify-content: space-between;
+  }
+  .invoice-editor .invoice-discount-control {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.375rem;
+    min-width: 0;
+  }
+  .invoice-editor .invoice-discount-control input[type='checkbox'] {
+    width: 0.875rem;
+    height: 0.875rem;
+    accent-color: rgb(var(--brand));
+  }
+  .invoice-editor .invoice-lines .ui-grid-dense thead th {
+    padding: 0.3125rem 0.5rem;
+  }
+  .invoice-editor .invoice-lines .ui-grid-dense tbody td {
+    padding-top: 0.1875rem;
+    padding-bottom: 0.1875rem;
+  }
+  .invoice-editor .invoice-lines .ui-grid-dense .ui-input,
+  .invoice-editor .invoice-lines .ui-grid-dense .ui-select {
+    min-height: 1.875rem;
+    height: 1.875rem;
+  }
+  .invoice-editor .invoice-totals {
+    font-size: 0.8125rem;
+  }
+
+  @media (max-width: 1023px) {
+    .invoice-editor .invoice-head > div + div {
+      border-inline-start: 0 !important;
+      padding-inline-start: 0;
+      border-top: 1px solid rgb(var(--border));
+      padding-top: 0.75rem;
+    }
   }
 
   /*
@@ -3453,7 +3692,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.125rem;
-    padding: 0.1875rem;
+    padding: 0.125rem;
     border-radius: 9999px;
     background-color: rgb(var(--surface-sunken));
     border: 1px solid rgb(var(--border));
@@ -3465,9 +3704,9 @@
     align-items: center;
     gap: 0.375rem;
     white-space: nowrap;
-    padding: 0.3125rem 0.75rem;
+    padding: 0.25rem 0.625rem;
     border-radius: 9999px;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 500;
     color: rgb(var(--fg-muted));
     background-color: transparent;
@@ -3520,6 +3759,69 @@
     border-radius: 9999px;
     background-color: rgb(var(--seg-strong, var(--surface-sunken)));
     color: rgb(var(--seg-ink, var(--fg)));
+  }
+
+  /* Keep the compact customer toolbar, while the grid itself owns the rest of
+     the viewport. This puts horizontal scrolling at the page foot, matching
+     Sales Invoices instead of immediately below the final customer row. */
+  .document-list-tight .ui-segment {
+    padding-block: 0.1875rem;
+  }
+  .customer-list-page,
+  .sales-list-page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 2.5rem);
+    min-height: 0;
+    gap: .25rem;
+  }
+  .customer-list-page > :not([hidden]) ~ :not([hidden]),
+  .sales-list-page > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0;
+  }
+  .customer-list-page > .ui-page-heading,
+  .sales-list-page > .ui-page-heading {
+    margin-bottom: 0;
+    padding-block: .35rem;
+  }
+  .customer-list-page > section[aria-label='Summary'] .ui-card,
+  .sales-list-page > section[aria-label='Summary'] .ui-card {
+    padding-block: .25rem;
+  }
+  .customer-list-page > .ui-card:last-child,
+  .sales-list-page > .ui-card:last-child {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+  .customer-list-page .customer-table-scroll,
+  .sales-list-page .ui-table-scroll {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    flex: 1 1 auto;
+  }
+  .customer-table-scroll,
+  .vendor-table-scroll,
+  .purchase-order-table-scroll,
+  .purchase-return-table-scroll,
+  .inventory-table-scroll,
+  .compact-list-table-scroll,
+  .transactions-table-scroll {
+    height: calc(100dvh - 13rem);
+    min-height: 12rem;
+    max-height: calc(100dvh - 13rem);
+  }
+  .customer-list-page .customer-table-scroll {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+  }
+  .sales-list-page .ui-table-scroll {
+    height: auto;
+    min-height: 0;
+    max-height: none;
   }
   /* On the selected tab the count takes the saturated key, which is the one
      place the full-strength status colour appears. */
@@ -3815,181 +4117,136 @@
   }
 }
 
-/* ---------------------------------------------------------------------------
-   Column geometry — alignment stated once, on the header
-   Re-applied on top of the graphite system rather than merged into it: this
-   block is additive and refers only to classes the system already defines, so
-   it can be read, moved or removed as one piece. `ui-col-h-*` is written by
-   ColumnHeader from its `align` prop and is used by 26 screens across sales,
-   inventory, accounting, reports and payroll; without these rules every one of
-   those tables loses the alignment its headers claim.
---------------------------------------------------------------------------- */
-@layer components {
-  /* --- column geometry -----------------------------------------------------
-     A column owns its edge, its width and its alignment; the header and every
-     cell consume them. Nothing here is per page.
-
-     Alignment: the header takes it from `ui-col-h-<align>` (written by
-     ColumnHeader from its `align` prop) or from `ui-num`; the cells from
-     their role class. Money and numbers right, everything else left, a
-     checkbox centred. A status pill is a word and starts where the words do.
-
-     Width: the columns whose content has a natural size — identifier, date,
-     money, status, checkbox, action — shrink to it, and the one descriptive
-     column (party, item, narration) absorbs what is left. Without this the
-     browser spread a wider screen across every column equally, and at 1920
-     a heading sat a hand's width from its own figures.
-  --------------------------------------------------------------------------- */
-  .ui-table thead th.ui-col-h-right,
-  .ui-table thead th.ui-num {
-    text-align: right;
-  }
-  .ui-table thead th.ui-col-h-center {
-    text-align: center;
-  }
-  .ui-table thead th.ui-col-h-left {
-    text-align: left;
-  }
-  .ui-table thead th.ui-num,
-  .ui-table thead th.ui-col-h-right,
-  .ui-table tbody td.ui-col-amount,
-  .ui-table tbody td.ui-col-date,
-  .ui-table tbody td.ui-col-id,
-  .ui-table tbody td:has(> .ui-pill),
-  .ui-table tbody td:has(> span > .ui-pill) {
-    width: 1%;
-    white-space: nowrap;
-  }
-  /* A left-aligned header over a right-aligned column is the one mismatch a
-     caller can still write; the role on the cells wins for the header too. */
-  .ui-table tbody td.ui-col-amount {
-    text-align: right;
-  }
-
-  /* --- the column's alignment, stated once, on the header -----------------
-     `ui-col-h-<align>` on a <th> governs every cell at that index. A page
-     says "Date is centred" in one place — the header — and the cells follow,
-     so a heading and its values cannot disagree. Written out per index rather
-     than generated, because there is nothing to generate it from at runtime.
-     Fourteen columns is more than any list in the product has. */
-  .ui-table:has(thead th:nth-child(1).ui-col-h-right) tbody td:nth-child(1) { text-align: right; }
-  .ui-table:has(thead th:nth-child(1).ui-col-h-center) tbody td:nth-child(1) { text-align: center; }
-  .ui-table:has(thead th:nth-child(1).ui-col-h-left) tbody td:nth-child(1) { text-align: left; }
-  .ui-table:has(thead th:nth-child(2).ui-col-h-right) tbody td:nth-child(2) { text-align: right; }
-  .ui-table:has(thead th:nth-child(2).ui-col-h-center) tbody td:nth-child(2) { text-align: center; }
-  .ui-table:has(thead th:nth-child(2).ui-col-h-left) tbody td:nth-child(2) { text-align: left; }
-  .ui-table:has(thead th:nth-child(3).ui-col-h-right) tbody td:nth-child(3) { text-align: right; }
-  .ui-table:has(thead th:nth-child(3).ui-col-h-center) tbody td:nth-child(3) { text-align: center; }
-  .ui-table:has(thead th:nth-child(3).ui-col-h-left) tbody td:nth-child(3) { text-align: left; }
-  .ui-table:has(thead th:nth-child(4).ui-col-h-right) tbody td:nth-child(4) { text-align: right; }
-  .ui-table:has(thead th:nth-child(4).ui-col-h-center) tbody td:nth-child(4) { text-align: center; }
-  .ui-table:has(thead th:nth-child(4).ui-col-h-left) tbody td:nth-child(4) { text-align: left; }
-  .ui-table:has(thead th:nth-child(5).ui-col-h-right) tbody td:nth-child(5) { text-align: right; }
-  .ui-table:has(thead th:nth-child(5).ui-col-h-center) tbody td:nth-child(5) { text-align: center; }
-  .ui-table:has(thead th:nth-child(5).ui-col-h-left) tbody td:nth-child(5) { text-align: left; }
-  .ui-table:has(thead th:nth-child(6).ui-col-h-right) tbody td:nth-child(6) { text-align: right; }
-  .ui-table:has(thead th:nth-child(6).ui-col-h-center) tbody td:nth-child(6) { text-align: center; }
-  .ui-table:has(thead th:nth-child(6).ui-col-h-left) tbody td:nth-child(6) { text-align: left; }
-  .ui-table:has(thead th:nth-child(7).ui-col-h-right) tbody td:nth-child(7) { text-align: right; }
-  .ui-table:has(thead th:nth-child(7).ui-col-h-center) tbody td:nth-child(7) { text-align: center; }
-  .ui-table:has(thead th:nth-child(7).ui-col-h-left) tbody td:nth-child(7) { text-align: left; }
-  .ui-table:has(thead th:nth-child(8).ui-col-h-right) tbody td:nth-child(8) { text-align: right; }
-  .ui-table:has(thead th:nth-child(8).ui-col-h-center) tbody td:nth-child(8) { text-align: center; }
-  .ui-table:has(thead th:nth-child(8).ui-col-h-left) tbody td:nth-child(8) { text-align: left; }
-  .ui-table:has(thead th:nth-child(9).ui-col-h-right) tbody td:nth-child(9) { text-align: right; }
-  .ui-table:has(thead th:nth-child(9).ui-col-h-center) tbody td:nth-child(9) { text-align: center; }
-  .ui-table:has(thead th:nth-child(9).ui-col-h-left) tbody td:nth-child(9) { text-align: left; }
-  .ui-table:has(thead th:nth-child(10).ui-col-h-right) tbody td:nth-child(10) { text-align: right; }
-  .ui-table:has(thead th:nth-child(10).ui-col-h-center) tbody td:nth-child(10) { text-align: center; }
-  .ui-table:has(thead th:nth-child(10).ui-col-h-left) tbody td:nth-child(10) { text-align: left; }
-  .ui-table:has(thead th:nth-child(11).ui-col-h-right) tbody td:nth-child(11) { text-align: right; }
-  .ui-table:has(thead th:nth-child(11).ui-col-h-center) tbody td:nth-child(11) { text-align: center; }
-  .ui-table:has(thead th:nth-child(11).ui-col-h-left) tbody td:nth-child(11) { text-align: left; }
-  .ui-table:has(thead th:nth-child(12).ui-col-h-right) tbody td:nth-child(12) { text-align: right; }
-  .ui-table:has(thead th:nth-child(12).ui-col-h-center) tbody td:nth-child(12) { text-align: center; }
-  .ui-table:has(thead th:nth-child(12).ui-col-h-left) tbody td:nth-child(12) { text-align: left; }
-  .ui-table:has(thead th:nth-child(13).ui-col-h-right) tbody td:nth-child(13) { text-align: right; }
-  .ui-table:has(thead th:nth-child(13).ui-col-h-center) tbody td:nth-child(13) { text-align: center; }
-  .ui-table:has(thead th:nth-child(13).ui-col-h-left) tbody td:nth-child(13) { text-align: left; }
-  .ui-table:has(thead th:nth-child(14).ui-col-h-right) tbody td:nth-child(14) { text-align: right; }
-  .ui-table:has(thead th:nth-child(14).ui-col-h-center) tbody td:nth-child(14) { text-align: center; }
-  .ui-table:has(thead th:nth-child(14).ui-col-h-left) tbody td:nth-child(14) { text-align: left; }
-  /* A centred date centres as one unit — icon and value together — because
-     the cell is inline-flex and text-align places the whole box. A pill
-     likewise: it is inline, so it centres as a pill, never stretched. */
-  .ui-table tbody td.ui-col-date .ui-cell-date { display: inline-flex; }
-  /* The row's own controls: a checkbox on the left, the menu on the right.
-     One fixed width each, header and body alike, the control centred. */
-  .ui-table th.w-8,
-  .ui-table td.w-8,
-  .ui-table th.w-10,
-  .ui-table td.w-10 {
-    text-align: center;
-    white-space: nowrap;
-  }
-  .ui-table td.w-8 > .ui-checkbox,
-  .ui-table th.w-8 > .ui-checkbox {
-    display: inline-block;
-    vertical-align: middle;
-  }
+/* CLOR application typography.
+   These named roles are the only type scale used by product screens. Keeping
+   the values here prevents modules and dialogs from inventing their own visual
+   hierarchy. */
+:root {
+  --type-page: 1.5rem;
+  --type-major: 1.125rem;    /* 18px — 10% below 20px */
+  --type-section: 1rem;
+  --type-body: 0.8125rem;
+  --type-label: 0.75rem;
+  --type-support: 0.75rem;
 }
 
-/* Application-wide typography emphasis.
-   Inter's variable range lets the interface gain roughly 10–15% stroke
-   strength without jumping a full named weight and making dense forms feel
-   cramped. Explicit Tailwind weight utilities are raised by the same amount
-   so typography stays consistent across older and newer screens. */
-body { font-weight: 500; }
-.font-normal { font-weight: 500; }
-.font-medium { font-weight: 600; }
-.font-semibold { font-weight: 700; }
-.font-bold { font-weight: 800; }
-.font-extrabold { font-weight: 800; }
+body { font-size: var(--type-body); line-height: 1.2375rem; font-weight: 400; }
+.font-normal { font-weight: 400; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold, .font-extrabold { font-weight: 700; }
 
-h1, h2, h3, h4, h5, h6,
-.ui-t-page, .ui-t-sec, .ui-t-doc, .ui-title, .ui-card-title,
-.ui-section-label {
-  font-weight: 800 !important;
+.ui-content, .ui-nav-item, .ui-input, .ui-select,
+input, select, textarea, .ui-table tbody, .ui-t-body, .ui-t-cell {
+  font-size: var(--type-body);
+  line-height: 1.2375rem;
+  font-weight: 400;
 }
 
-.ui-btn, .ui-label, .ui-card-label, .ui-tab, .ui-nav-item {
+.ui-label, label.ui-label {
+  font-size: var(--type-label);
+  line-height: 1.0125rem;
+  font-weight: 500;
+}
+
+label {
+  font-size: var(--type-label);
+  font-weight: 500;
+}
+
+.ui-btn, .ui-tab, button {
+  font-size: var(--type-body);
+  line-height: 1.125rem;
   font-weight: 600;
 }
 
-/* One shared reading size for page content, navigation, controls and data.
-   Captions and column labels remain smaller because they are supporting text;
-   page/document headings keep the established larger hierarchy. */
-.ui-content, .ui-nav-item, .ui-btn, .ui-input, .ui-select,
-input, select, textarea, .ui-table tbody, .ui-t-body {
-  font-size: 0.8125rem;
-  line-height: 1.25rem;
-}
-.ui-content, .ui-input, .ui-select, input, select, textarea,
-.ui-table tbody, .ui-t-body, .ui-t-cell, .ui-caption,
-.ui-money, .ui-amount, .ui-money-lg {
-  font-weight: 500;
+.ui-caption, .ui-muted.ui-caption, .ui-helper {
+  font-size: var(--type-support);
+  line-height: 1.0125rem;
+  font-weight: 400;
 }
 
 /* Match the full selector strength of the original rail rules. The earlier
    light child rule was more specific than the general typography override,
    which is why the sidebar still appeared unchanged. */
-.ui-rail .ui-nav-item { font-size: 0.8125rem; font-weight: 600; }
-.ui-rail .ui-nav-item[data-level='module'] { font-weight: 700; }
-.ui-rail .ui-nav-item:not([data-level='module']):not(.ui-nav-collapse) { font-weight: 600; }
+.ui-rail .ui-nav-item { font-size: var(--type-body); font-weight: 500; }
+.ui-rail .ui-nav-item[data-level='module'] { font-weight: 600; }
+.ui-rail .ui-nav-item:not([data-level='module']):not(.ui-nav-collapse) { font-weight: 500; }
 .ui-rail .ui-nav-item[data-active='true'],
 .ui-rail .ui-nav-item:not([data-level='module'])[data-active='true'] {
-  font-weight: 700;
+  font-weight: 600;
 }
 
-/* Structured heading bands use the shared neutral heading surface. This is
-   deliberately limited to card and table headers; painting every standalone
-   page title would create large blocks and waste working space. */
+/* One light-blue heading band throughout the product: page/action headers,
+   card headings and grid headings all belong to the same visual hierarchy. */
 .ui-card-head {
+  background-color: rgb(var(--heading-bg)) !important;
+}
+.ui-page-heading {
+  background-color: rgb(var(--page-heading-bg)) !important;
+  border: 1px solid rgb(var(--border));
+  border-radius: 0;
+  border-inline: 0;
+  border-top: 0;
+  min-height: 2.5rem;
+  padding: 0.25rem 0.75rem;
+}
+.ui-page-heading .ui-entity-mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: .4rem;
+}
+.ui-page-heading > :last-child :where(.ui-btn, .ui-input, .ui-select) {
+  min-height: 2rem;
+  height: 2rem;
+}
+.ui-creation-form .ui-page-heading,
+.invoice-editor .ui-page-heading {
+  background-color: rgb(var(--page-heading-bg)) !important;
+}
+
+/* Creation screens use one restrained four-colour hierarchy. The page/action
+   bar is blue, the working paper stays white, the committing action remains
+   graphite, and yellow is reserved for the figures a person checks before
+   saving. Keeping the colour on shared form roles makes invoices, orders,
+   notes, bills, expenses and item masters read as one product. */
+.ui-creation-form,
+.item-master-form {
+  background: rgb(var(--surface));
+}
+.ui-creation-form > .ui-page-heading,
+.item-master-form .ui-page-heading {
+  background: rgb(var(--page-heading-bg)) !important;
+  border-bottom-color: rgb(var(--brand-border)) !important;
+}
+.ui-creation-form :where(.ui-doc-section, .ui-card),
+.item-master-form :where(.item-master-section, .ui-card) {
+  background-color: rgb(var(--surface));
+}
+.ui-creation-form :where(.ui-sec-head, .invoice-lines-head),
+.item-master-form .ui-sec-head {
+  border-inline-start: 3px solid rgb(var(--brand));
+  padding-inline-start: 0.5rem;
+}
+.ui-creation-form :where(.invoice-totals, .document-totals, .ui-totals),
+.ui-creation-form .ui-total-row:last-child,
+.item-master-form .ui-total-row:last-child {
+  background-color: rgb(var(--warn-soft));
+  border-color: rgb(var(--warn) / 0.25) !important;
+}
+.ui-creation-form .ui-total-row:last-child,
+.item-master-form .ui-total-row:last-child {
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-btn);
+}
+.ui-creation-form :where(.ui-table, .ui-grid-dense) thead th,
+.item-master-form :where(.ui-table, .ui-grid-dense) thead th {
   background-color: rgb(var(--heading-bg));
 }
 .ui-table thead th {
-  font-size: 0.8125rem;
-  font-weight: 800;
+  font-size: var(--type-support);
+  line-height: 1rem;
+  font-weight: 600;
 }
 
 /* One typeface and one heading scale everywhere. Some older screens still
@@ -4002,24 +4259,83 @@ body, button, input, select, textarea, table,
 }
 
 h1, h1[class], .ui-t-page {
-  font-size: 1.6875rem !important;
-  line-height: 2.25rem !important;
+  font-size: var(--type-page) !important;
+  line-height: 1.8rem !important;
+  font-weight: 700 !important;
   letter-spacing: -0.025em;
 }
 h2, h2[class], .ui-t-doc {
-  font-size: 1.1875rem !important;
-  line-height: 1.75rem !important;
+  font-size: var(--type-major) !important;
+  line-height: 1.575rem !important;
+  font-weight: 700 !important;
   letter-spacing: -0.015em;
 }
 h3, h3[class], .ui-t-sec, .ui-card-title {
-  font-size: 0.9375rem !important;
-  line-height: 1.5rem !important;
-  letter-spacing: -0.005em;
+  font-size: var(--type-section) !important;
+  line-height: 1.35rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0;
 }
 h4, h4[class], h5, h5[class], h6, h6[class] {
-  font-size: 0.8125rem !important;
-  line-height: 1.25rem !important;
+  font-size: var(--type-section) !important;
+  line-height: 1.35rem !important;
+  font-weight: 600 !important;
   letter-spacing: 0;
+}
+
+.ui-card-label, .ui-t-label, .ui-kpi-label, .ui-table thead th, th.ui-th {
+  font-size: var(--type-support);
+  line-height: 0.9rem;
+  font-weight: 600;
+}
+
+.ui-table tbody td {
+  font-size: var(--type-body);
+  line-height: 1.2375rem;
+  font-weight: 400;
+}
+
+.ui-title, .ui-t-doc {
+  font-size: var(--type-major);
+  line-height: 1.575rem;
+  font-weight: 700;
+}
+
+.ui-section-label {
+  font-size: var(--type-section);
+  line-height: 1.35rem;
+  font-weight: 600;
+}
+
+.ui-narration,
+input[id*='narration' i], textarea[id*='narration' i],
+input[name*='narration' i], textarea[name*='narration' i] {
+  font-size: var(--type-label);
+  line-height: 1.125rem;
+  font-weight: 400;
+  font-style: italic;
+}
+
+.ui-money, .ui-amount, .ui-money-lg, .ui-kpi, .ui-num,
+.ui-col-amount, .tabular-nums, [data-financial='true'] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Read-only customer/vendor details use the creation form's label/control
+   structure at display density. The narrower label gutter and full remaining
+   control width remove the empty middle band without changing field order. */
+@media (min-width: 640px) {
+  .customer-detail-form-row {
+    grid-template-columns: 9rem minmax(12rem, 1fr);
+    column-gap: 1rem;
+    align-items: center;
+  }
+  .customer-detail-form-row > .min-w-0 {
+    max-width: none;
+  }
+  .customer-detail-form-row > :first-child {
+    padding-top: 0;
+  }
 }
 .report-menu-item {
   display: block;
@@ -4027,7 +4343,8 @@ h4, h4[class], h5, h5[class], h6, h6[class] {
   border-radius: 0.375rem;
   padding: 0.5rem 0.625rem;
   color: #0f172a;
-  font-size: 0.8125rem;
+  font-size: var(--type-body);
+  font-weight: 600;
   text-align: left;
 }
 .report-menu-item:hover { background: #f5f7fa; }
@@ -4043,14 +4360,15 @@ h4, h4[class], h5, h5[class], h6, h6[class] {
 }
 .report-layout-choice:hover { background: #f5f7fa; }
 .report-layout-choice.is-active { background: #e8f1ff; color: #0b6ffb; }
-.report-layout-choice small { display: block; margin-top: 0.125rem; color: #64748b; font-size: 0.6875rem; }
+.report-layout-choice small { display: block; margin-top: 0.125rem; color: #64748b; font-size: var(--type-support); font-weight: 400; }
 .report-layout-drag-row {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   border-bottom: 1px solid #e2e8f0;
   padding: 0.55rem 0.75rem;
-  font-size: 0.75rem;
+  font-size: var(--type-body);
+  font-weight: 400;
   background: #fff;
   cursor: grab;
   transition: background-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
@@ -4118,19 +4436,449 @@ h4, h4[class], h5, h5[class], h6, h6[class] {
    hierarchy without wide tracking or all-caps consuming column width. */
 .ui-table thead th,
 th.ui-th {
-  font-weight: 700;
+  font-size: var(--type-support);
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
   color: rgb(var(--fg));
 }
 .ui-table thead th { background-color: rgb(var(--heading-bg)); }
+
+/* Settings workspace ------------------------------------------------------
+   A small, durable catalogue beside one focused editing surface. Category
+   labels are signposts; only the settings beneath them behave like controls. */
+.settings-page-bar {
+  min-height: 2.5rem;
+  padding-block: .25rem !important;
+  padding-inline: .25rem;
+  background-color: rgb(var(--page-heading-bg)) !important;
+}
+.settings-page-bar h1,
+.reports-page-bar h1 {
+  font-size: var(--type-body) !important;
+  line-height: 1.25rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0;
+}
+.reports-page-bar {
+  min-height: 2.5rem;
+  padding-block: .25rem !important;
+  background-color: rgb(var(--page-heading-bg)) !important;
+}
+.settings-page-bar .ui-entity-mark,
+.reports-page-bar .ui-entity-mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: .4rem;
+}
+.settings-page-bar :where(.ui-input, .ui-select, .ui-btn),
+.reports-page-bar :where(.ui-input, .ui-select, .ui-btn) {
+  min-height: 2rem;
+  height: 2rem;
+}
+.settings-workspace {
+  height: calc(100dvh - 5rem);
+  min-height: 0 !important;
+  box-shadow: 0 12px 32px rgb(15 23 42 / .05);
+}
+.settings-catalog {
+  background: rgb(var(--rail-bg));
+  padding: .5rem;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.settings-catalog-title {
+  padding: .35rem .65rem .75rem;
+  color: rgb(var(--fg));
+  font-size: .78rem;
+  font-weight: 750;
+  letter-spacing: -.01em;
+}
+.settings-catalog-group {
+  border-top: 0;
+  padding-block: .45rem .35rem;
+}
+.settings-catalog-group:first-child {
+  border-top: 0;
+  padding-top: .25rem;
+}
+.settings-catalog-heading {
+  margin: 0 0 .2rem;
+  padding-inline: .625rem;
+  color: rgb(var(--nav-fg));
+  font-size: var(--type-label) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0;
+  line-height: 1.125rem !important;
+  text-transform: none;
+}
+.settings-catalog-items {
+  display: grid;
+  gap: .08rem;
+}
+.settings-catalog-link {
+  min-height: 2.25rem;
+  padding: .5rem .625rem !important;
+  color: rgb(var(--nav-fg-muted));
+  font-size: var(--type-body);
+  font-weight: 500;
+  line-height: 1.25rem;
+}
+.settings-catalog-link:hover {
+  background: rgb(var(--rail-hover));
+  color: rgb(var(--nav-fg));
+}
+.settings-catalog-link:focus-visible {
+  outline: 2px solid rgb(var(--ring));
+  outline-offset: 1px;
+}
+.settings-catalog-link[data-active='true'] {
+  background: rgb(var(--rail-active));
+  color: rgb(var(--nav-fg));
+  font-weight: 600;
+  box-shadow: none;
+}
+.settings-catalog-link[data-active='true'] svg {
+  color: rgb(var(--nav-fg));
+}
+.settings-content {
+  overscroll-behavior: contain;
+  background: linear-gradient(180deg, rgb(var(--surface)) 0%, rgb(var(--surface)) 72%, rgb(var(--surface-sunken) / .28) 100%);
+}
+.settings-workspace:has(.tds-settings-page) {
+  height: auto;
+  min-height: calc(100dvh - 5rem) !important;
+  overflow: visible;
+}
+.settings-content:has(.tds-settings-page) {
+  overflow: visible;
+}
+.tds-settings-page {
+  min-width: 0;
+}
+.tds-settings-page .ui-page-header {
+  gap: .5rem;
+}
+.tds-view-select {
+  width: 11.5rem;
+}
+.tds-header-search {
+  width: min(18rem, 28vw);
+}
+.tds-sections-table {
+  width: 100%;
+  table-layout: fixed;
+}
+.tds-sections-table th:nth-child(1) { width: 9%; }
+.tds-sections-table th:nth-child(2) { width: 22%; }
+.tds-sections-table th:nth-child(3) { width: 11%; }
+.tds-sections-table th:nth-child(4) { width: 9%; }
+.tds-sections-table th:nth-child(5) { width: 14%; }
+.tds-sections-table th:nth-child(6) { width: 17%; }
+.tds-sections-table th:nth-child(7) { width: 10%; }
+.tds-sections-table th:nth-child(8) { width: 8%; }
+.tds-sections-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.company-profile-view {
+  padding-top: 0;
+}
+.company-profile-actions {
+  position: absolute;
+  right: 0;
+  top: -3.55rem;
+}
+
+/* Company profile: two fields per row, following the compact statutory-form
+   layout used throughout accounting setup screens. */
+.company-profile-form {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgb(var(--border));
+  border-radius: .55rem;
+  background: rgb(var(--surface));
+  box-shadow: 0 1px 3px rgb(15 23 42 / .05);
+}
+.company-profile-section {
+  border-top: 1px solid rgb(var(--border));
+  background: rgb(var(--surface));
+}
+.company-profile-section:first-child {
+  border-top: 0;
+}
+.company-profile-section-head {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .58rem .75rem .3rem;
+}
+.company-profile-section-head h3 {
+  color: rgb(var(--fg));
+  font-size: .875rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.company-profile-section-head p {
+  margin-top: .05rem;
+  color: rgb(var(--fg-muted));
+  font-size: .75rem;
+  line-height: 1.25;
+}
+.company-profile-section-icon {
+  display: grid;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex: none;
+  place-items: center;
+  border-radius: .38rem;
+  background: rgb(var(--brand-soft));
+  color: rgb(var(--brand));
+}
+.company-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem .8rem;
+  padding: .35rem .75rem .68rem;
+}
+.company-profile-grid .ui-label {
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .005em;
+}
+.company-profile-grid .ui-input,
+.company-profile-grid .ui-select {
+  min-height: 2.25rem;
+  height: 2.25rem;
+  border-radius: .35rem;
+  padding-block: .35rem;
+  font-size: .875rem;
+}
+.company-logo-field {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.company-logo-control {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: .5rem;
+}
+.company-logo-preview {
+  display: grid;
+  width: 3rem;
+  height: 2.5rem;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgb(var(--border-field));
+  border-radius: .35rem;
+  background: rgb(var(--surface-sunken));
+  color: rgb(var(--fg-subtle));
+}
+.company-logo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.company-profile-detail {
+  min-width: 0;
+  padding: 0;
+}
+.company-profile-detail .ui-detail-label {
+  margin-bottom: .25rem;
+  font-size: .75rem;
+  font-weight: 700;
+}
+.company-profile-readonly {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  color: rgb(var(--fg));
+  text-align: start;
+  background: rgb(var(--surface-sunken) / .5);
+  cursor: default;
+}
+@media (max-width: 720px) {
+  .settings-workspace { height: auto; min-height: calc(100dvh - 10rem) !important; }
+  .company-profile-actions { position: static; margin-bottom: .6rem; }
+}
+@media (max-width: 720px) {
+  .company-profile-grid { grid-template-columns: minmax(0, 1fr); }
+}
 .ui-table thead th:hover { background-color: rgb(var(--heading-hover)); }
+
+/* One compact column-header height across list tables, entry grids and
+   report tables. The 16px label line plus 5.6px above and below is 27.2px,
+   approximately 15% below the previous 32px header. */
+.ui-table thead th,
+.ui-grid-dense thead th,
+.ui-creation-form .ui-table thead th,
+.invoice-editor .invoice-lines .ui-grid-dense thead th,
+th.ui-th {
+  padding-top: .35rem !important;
+  padding-bottom: .35rem !important;
+}
+
+/* Cursor and keyboard movement share one quiet selection cue. The pale yellow
+   comes from the supplied blue/yellow palette; black text keeps every label
+   readable and leaves financial red/green status marks untouched. */
+.ui-table tbody tr:hover,
+.ui-table tbody tr:focus-within,
+.ui-hover-sunken:hover,
+.ui-hover-sunken:focus-visible,
+[role='row'][tabindex]:hover,
+[role='row'][tabindex]:focus-visible,
+[role='option']:hover,
+[role='option']:focus-visible,
+[role='option'][aria-selected='true'],
+[role='menuitem']:hover,
+[role='menuitem']:focus-visible,
+[role='treeitem']:hover,
+[role='treeitem']:focus-visible,
+[role='listitem'][tabindex]:hover,
+[role='listitem'][tabindex]:focus-visible,
+[data-highlighted]:not([data-highlighted='false']) {
+  background-color: rgb(var(--cursor-bg)) !important;
+  color: rgb(var(--cursor-fg)) !important;
+}
+.ui-rail .ui-nav-item:hover {
+  background-color: rgb(var(--cursor-bg));
+  color: rgb(var(--cursor-fg));
+}
+.ui-segment:hover:not([aria-selected='true']) {
+  background-color: rgb(var(--cursor-bg));
+  color: rgb(var(--cursor-fg));
+}
+
+/* Carry the same cue through the remaining shared controls. Selected tabs and
+   primary actions keep their established black/grey treatment. */
+.ui-input:hover:not(:disabled),
+.ui-input:focus:not(:disabled),
+.ui-select:hover:not(:disabled),
+.ui-select:focus:not(:disabled),
+.ui-select:focus-within,
+:where(input, select, textarea):focus-visible:not(:disabled) {
+  background-color: rgb(var(--cursor-bg)) !important;
+  color: rgb(var(--cursor-fg)) !important;
+}
+.ui-btn-secondary:hover:not(:disabled),
+.ui-btn-soft:hover:not(:disabled),
+.ui-btn-ghost:hover:not(:disabled),
+.ui-card-interactive:hover,
+.ui-card-action:hover,
+.ui-tab:hover:not(.is-active),
+[role='tab']:hover:not([aria-selected='true']),
+[role='tab']:focus-visible:not([aria-selected='true']) {
+  background-color: rgb(var(--cursor-bg)) !important;
+  color: rgb(var(--cursor-fg)) !important;
+}
+
+/* Enterprise geometry and state treatment. Shared primitives enforce the
+   theme while feature markup, validation and keyboard behaviour stay intact. */
+.ui-card,
+.ui-dialog,
+.ui-modal-panel,
+.ui-table-shell,
+.ui-doc-section,
+.ui-page-heading,
+[role='menu'].ui-card {
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow-card);
+}
+.ui-segmented,
+.ui-segment,
+.ui-tab,
+.ui-icon-btn,
+.report-menu-item,
+.report-layout-choice {
+  border-radius: var(--radius-btn) !important;
+}
+.ui-input:hover:not(:disabled),
+.ui-select:hover:not(:disabled) {
+  background-color: rgb(var(--surface)) !important;
+  border-color: rgb(var(--brand)) !important;
+  color: rgb(var(--fg)) !important;
+}
+.ui-input:focus:not(:disabled),
+.ui-select:focus:not(:disabled),
+.ui-select:focus-within,
+:where(input, select, textarea):focus-visible:not(:disabled) {
+  background-color: rgb(var(--surface)) !important;
+  border-color: rgb(var(--brand)) !important;
+  box-shadow: 0 0 0 1px rgb(var(--brand) / 0.2);
+  color: rgb(var(--fg)) !important;
+}
+.ui-rail .ui-nav-item[data-active='true'],
+.ui-rail .ui-nav-item[data-level='module'][data-active='true'],
+.ui-rail .ui-nav-item:not([data-level='module'])[data-active='true'] {
+  background-color: rgb(var(--rail-active)) !important;
+  color: rgb(var(--fg)) !important;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.ui-rail .ui-nav-item[data-active='true'][data-tone] svg,
+.ui-rail .ui-nav-item:not([data-level='module'])[data-active='true'][data-tone] svg {
+  color: rgb(var(--brand-deep));
+}
+.ui-rail .ui-nav-item[data-active='true']::before {
+  background-color: #d6a500;
+}
+
+/* Selected tabs return to the original graphite treatment. Status meaning
+   remains available in counts and content, while the active control is clear. */
+.ui-segment[aria-selected='true'],
+[role='tab'][aria-selected='true'].ui-segment {
+  background-color: #18181b !important;
+  border-color: #18181b !important;
+  color: #fff !important;
+}
+.ui-segment[aria-selected='true'] .ui-segment-count {
+  background-color: rgb(255 255 255 / 0.18) !important;
+  color: #fff !important;
+}
+.ui-segment:not([aria-selected='true']),
+[role='tab']:not([aria-selected='true']) {
+  color: #18181b !important;
+}
+.ui-segment:not([aria-selected='true']) .ui-segment-count {
+  color: #18181b !important;
+}
+.ui-tab.is-active,
+[role='tab'][aria-selected='true']:not(.ui-segment) {
+  color: #18181b;
+}
+.ui-tab.is-active::after {
+  background-color: #18181b;
+}
+
+/* Primary page actions use the requested graphite grade. This includes
+   create/save buttons and split-button triggers built from the shared class. */
+.ui-btn-primary,
+.ui-btn-brand {
+  background-color: #18181b !important;
+  border-color: #18181b !important;
+  color: #fff !important;
+}
+.ui-btn-primary:hover:not(:disabled),
+.ui-btn-brand:hover:not(:disabled) {
+  background-color: #27272a !important;
+  border-color: #27272a !important;
+  color: #fff !important;
+}
+.ui-btn-primary:active:not(:disabled),
+.ui-btn-brand:active:not(:disabled) {
+  background-color: #09090b !important;
+  border-color: #09090b !important;
+}
 .report-status {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
   padding: 0.2rem 0.55rem;
-  font-size: 0.72rem;
+  font-size: var(--type-support);
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
@@ -4140,64 +4888,431 @@ th.ui-th {
 .report-status-draft { color: #1d4ed8; background: #dbeafe; }
 .report-status-overdue, .report-status-cancelled, .report-status-canceled, .report-status-error { color: #dc2626; background: #fee2e2; }
 
-/* ---------------------------------------------------------------------------
-   Tints and series hues for the customer and report screens
-   These arrived from main written as raw Tailwind palette classes —
-   bg-emerald-100, text-orange-700, bg-blue-500 — which is the one thing
-   DESIGN.md forbids in app chrome, because a fixed palette value cannot follow
-   the theme: every one of them stayed a light-mode colour on a dark ground.
-   Named here, from the tokens that already exist, so the same screens read in
-   both themes and the next screen has something to reach for.
---------------------------------------------------------------------------- */
-@layer components {
-  /* Meaning, not decoration: the pair the rest of the product already uses
-     for money that came in and money that did not. */
-  .ui-pos { color: rgb(var(--pos)); }
-  .ui-neg { color: rgb(var(--neg)); }
-
-  /* A figure on the page ground. Sunken rather than raised: a tile inside a
-     card that also has a border would be a card in a card. */
-  .ui-tile { background-color: rgb(var(--surface-sunken)); }
-  .ui-tile-pos { background-color: rgb(var(--pos) / 0.10); }
-  .ui-tile-brand { background-color: rgb(var(--brand) / 0.10); }
-  .ui-avatar-tint {
-    background-color: rgb(var(--brand) / 0.14);
-    color: rgb(var(--brand));
+/* Customer master density. These rules stay under the customer form wrapper,
+   so the shared vendor form keeps its existing spacing. */
+.customer-create-form .party-form-layout {
+  gap: .65rem;
+}
+.customer-create-form .party-form-layout > :not([hidden]) ~ :not([hidden]) {
+  margin-top: .65rem !important;
+}
+.customer-create-form .party-basic-card {
+  padding: .55rem .65rem !important;
+}
+.customer-create-form .party-tabs-card {
+  padding: .35rem .5rem .5rem !important;
+  min-height: 0 !important;
+  height: auto !important;
+}
+.customer-create-form .party-tabs-card > .ui-tabs {
+  min-height: 2.15rem;
+  gap: .2rem;
+  padding: .2rem;
+  border: 1px solid rgb(var(--brand-border));
+  border-radius: .4rem;
+  background: rgb(var(--heading-bg));
+}
+.customer-create-form .party-tabs-card > .ui-tabs .ui-tab {
+  min-height: 1.7rem;
+  padding: .25rem .65rem;
+  border-radius: .28rem !important;
+  color: rgb(var(--brand-deep));
+  font-size: var(--type-body);
+  line-height: 1.2rem;
+  font-weight: 600;
+}
+.customer-create-form .party-tabs-card > .ui-tabs .ui-tab:hover:not(.is-active) {
+  background: rgb(var(--surface));
+  color: rgb(var(--brand-deep));
+}
+.customer-create-form .party-tabs-card > .ui-tabs .ui-tab.is-active {
+  background: #18181b;
+  color: #fff;
+}
+.customer-create-form .party-tabs-card > .ui-tabs .ui-tab.is-active::after {
+  height: 2px;
+  background: rgb(var(--warn));
+}
+.customer-create-form .customer-gstin-controls {
+  width: 100%;
+}
+.customer-create-form .customer-gstin-controls > div {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: .35rem !important;
+}
+.customer-create-form .customer-gstin-fetch {
+  width: auto !important;
+  min-width: 3.8rem;
+  min-height: 1.75rem !important;
+  height: 1.75rem;
+  align-self: center;
+  padding: .15rem .4rem !important;
+  gap: .2rem;
+  font-size: var(--type-support);
+  line-height: 1;
+}
+.customer-create-form .customer-code-line {
+  padding-top: .1rem;
+}
+.customer-create-form .customer-opening-amount {
+  width: 8.5rem;
+  flex: 0 0 8.5rem;
+}
+.customer-create-form .customer-opening-inline {
+  width: auto;
+}
+.customer-create-form .customer-code-final {
+  width: 8.5rem;
+}
+.customer-create-form .party-section-title {
+  color: rgb(var(--brand-deep)) !important;
+  font-size: var(--type-section) !important;
+  line-height: 1.2rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.customer-create-form .party-section-copy {
+  display: none;
+}
+.customer-create-form .party-basic-grid {
+  margin-top: .65rem !important;
+  column-gap: 2rem !important;
+  row-gap: .6rem !important;
+}
+.customer-create-form .party-tab-body {
+  padding-top: .4rem !important;
+  flex: none !important;
+}
+.customer-create-form .party-tab-body > section {
+  gap: .45rem;
+  margin: 0;
+}
+.customer-create-form .party-tab-body .ui-card {
+  padding: .75rem !important;
+}
+.customer-create-form .party-tab-body .grid {
+  gap: .65rem !important;
+}
+.customer-create-form .party-tab-body :where(.mt-4, .mt-5) {
+  margin-top: .65rem !important;
+}
+.customer-create-form .party-basic-card :where(.ui-input, .ui-select),
+.customer-create-form .party-tabs-card :where(.ui-input, .ui-select) {
+  min-height: 2rem;
+  height: 2rem;
+  padding-top: .3rem;
+  padding-bottom: .3rem;
+  font-size: .8125rem;
+}
+.customer-create-form .party-tabs-card textarea.ui-input {
+  height: auto;
+  min-height: 4rem;
+}
+.customer-create-form .party-basic-card .ui-label,
+.customer-create-form .party-tabs-card .ui-label {
+  margin-bottom: .2rem;
+  font-size: var(--type-support);
+  line-height: 1rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.customer-create-form .party-basic-card .text-sm,
+.customer-create-form .party-tabs-card .text-sm {
+  font-size: .8125rem;
+  line-height: 1.1rem;
+}
+.customer-create-form .party-tab-body .ui-card > .flex:first-child {
+  gap: .5rem;
+}
+.customer-create-form .party-tab-body .ui-card .h-9.w-9 {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: .4rem;
+}
+.customer-create-form .party-tab-body .ui-card :where(.mt-3, .mt-4) {
+  margin-top: .55rem !important;
+}
+.customer-create-form .party-tabs-card table :where(th, td) {
+  padding-top: .3rem !important;
+  padding-bottom: .3rem !important;
+}
+.customer-create-form .party-tab-contacts .overflow-x-auto {
+  overflow-x: hidden;
+}
+.customer-create-form .party-tab-contacts table {
+  width: 100%;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+.customer-create-form .party-tab-contacts thead .ui-t-label {
+  font-size: var(--type-body);
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.customer-create-form .party-tab-contacts th:first-child,
+.customer-create-form .party-tab-contacts td:first-child {
+  width: 7%;
+}
+.customer-create-form .party-tab-contacts th:last-child,
+.customer-create-form .party-tab-contacts td:last-child {
+  width: 5%;
+}
+.customer-create-form .party-tab-contacts :where(input.ui-input) {
+  min-width: 0 !important;
+  width: 100%;
+}
+.customer-create-form .party-tab-contacts .ui-icon-btn {
+  width: 1.75rem !important;
+  height: 1.75rem !important;
+}
+.customer-create-form .party-tab-contacts section > div:last-child .ui-btn {
+  min-height: 1.9rem;
+  padding: .25rem .5rem;
+  font-size: .8125rem;
+}
+.customer-create-form .party-tab-credit .grid > .space-y-4 > div,
+.customer-create-form .party-tab-statutory > section > .grid > div,
+.customer-create-form .party-tab-others > section > .grid > div {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 16rem);
+  align-items: center;
+  column-gap: .65rem;
+}
+.customer-create-form :where(.party-tab-credit, .party-tab-statutory, .party-tab-others) .ui-label {
+  margin: 0;
+}
+.customer-create-form :where(.party-tab-credit, .party-tab-statutory, .party-tab-others) :where(.ui-input, .ui-select) {
+  width: 100%;
+  max-width: 16rem;
+}
+.customer-create-form .party-tab-credit .grid > .space-y-4,
+.customer-create-form .party-tab-statutory > section > .grid,
+.customer-create-form .party-tab-others > section > .grid {
+  align-content: start;
+  row-gap: .55rem !important;
+}
+.customer-create-form .customer-address-table thead th {
+  background: rgb(var(--warn-soft));
+  color: rgb(var(--fg));
+  font-size: var(--type-support);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+.customer-create-form .customer-address-table tbody td {
+  background: rgb(var(--surface));
+}
+.customer-create-form .customer-address-table tbody tr {
+  height: 2.15rem;
+}
+.customer-create-form .customer-address-table :where(th, td) {
+  padding: .15rem .25rem !important;
+}
+.customer-create-form .customer-address-delete {
+  width: 1.7rem !important;
+  height: 1.7rem !important;
+  padding: .2rem !important;
+}
+.customer-create-form .customer-address-table thead th.ui-t-label {
+  font-size: var(--type-support) !important;
+  line-height: 1rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+.customer-create-form .customer-address-table .ui-input,
+.customer-create-form .customer-address-table .ui-select {
+  min-width: 0;
+  width: 100%;
+  border-color: transparent;
+  border-radius: .2rem;
+  background: transparent;
+}
+.customer-create-form .customer-address-table .ui-input:focus,
+.customer-create-form .customer-address-table .ui-select:focus {
+  border-color: rgb(var(--brand)) !important;
+  background: rgb(var(--surface)) !important;
+}
+.customer-create-form :where(.party-tab-address, .party-tab-credit, .party-tab-statutory, .party-tab-others) .ui-caption {
+  display: none;
+}
+.customer-create-form :where(.party-tab-credit, .party-tab-statutory, .party-tab-others) > section > .grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 720px) {
+  .customer-create-form :where(.party-tab-credit, .party-tab-statutory, .party-tab-others) > section > .grid {
+    grid-template-columns: minmax(0, 1fr);
   }
-
-  /* The series hues, from the chart tokens rather than from whichever green
-     was to hand. Sales and receipts are a pair and must not both be green;
-     returns and outstanding are the two ways a sale goes wrong and are told
-     apart by hue, not by shade. */
-  .ui-bar-sales { background-color: rgb(var(--chart-blue)); }
-  .ui-bar-receipts { background-color: rgb(var(--chart-teal)); }
-  .ui-bar-returns { background-color: rgb(var(--warn)); }
-  .ui-bar-invoiced { background-color: rgb(var(--chart-purple)); }
-  .ui-bar-outstanding { background-color: rgb(var(--neg)); }
-  .ui-bar-brand { background-color: rgb(var(--brand)); }
+}
+@media (min-width: 640px) {
+  .customer-create-form .party-basic-grid .grid-cols-1 {
+    grid-template-columns: 9.25rem minmax(12rem, 1fr);
+    column-gap: .65rem;
+  }
 }
 
-@layer components {
-  /* The small capitalised label over a figure. It was written as
-     `text-xs font-bold uppercase` at each call site, which is weight standing
-     in for hierarchy on a word that is already a label by position. */
-  .ui-label-eyebrow {
-    font-size: 0.6875rem;     /* 11px */
-    line-height: 1rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-weight: 500;
-  }
-
-  /* The row a table ends on. Structure, so it is said once here rather than
-     by setting every figure in the row bold — which reads as a row of
-     emphasis, and a row of emphasis emphasises nothing. */
-  .ui-row-total {
-    background-color: rgb(var(--surface-sunken));
-    border-top: 1px solid rgb(var(--border));
-  }
-  .ui-row-total > td,
-  .ui-row-total > th {
-    font-weight: 500;
+/* Branch settings follows the same compact list-and-detail rhythm as the
+   primary application pages while remaining inside the Settings workspace. */
+.settings-branches {
+  padding-top: .35rem;
+}
+.settings-branches .branch-list-toolbar :where(.ui-input, .ui-btn) {
+  min-height: 2rem;
+  height: 2rem;
+}
+.settings-branches .report-menu-item {
+  display: flex !important;
+  align-items: center;
+  gap: .5rem;
+  min-height: 2rem;
+  padding: .4rem .55rem;
+  white-space: nowrap;
+  line-height: 1.1rem;
+}
+.settings-branches .report-menu-item svg {
+  flex: 0 0 auto;
+}
+.gst-registration-settings .branch-table-wrap {
+  overflow: visible;
+}
+.gst-registration-settings .branch-table-wrap table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.gst-registration-settings .branch-editor-form > .flex:last-child {
+  position: sticky;
+  bottom: -1rem;
+  margin: .75rem -1rem -1rem;
+  padding: .65rem 1rem;
+  border-top: 1px solid rgb(var(--border));
+  background: rgb(var(--surface));
+}
+.settings-branches .branch-detail-card,
+.settings-branches .branch-create-form {
+  max-width: none;
+}
+.settings-branches .branch-detail-card .ui-detail-label {
+  color: rgb(var(--brand-deep));
+  font-size: var(--type-support);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-branches .branch-detail-card .ui-detail-value {
+  min-height: 2rem;
+  margin-top: .2rem;
+  padding: .4rem .55rem;
+  border: 1px solid rgb(var(--border));
+  border-radius: .35rem;
+  background: rgb(var(--surface-sunken));
+  font-size: var(--type-body);
+}
+.settings-branches .branch-create-form :where(.ui-input, .ui-select),
+.settings-branches .branch-detail-card :where(.ui-input, .ui-select) {
+  min-height: 2rem;
+  height: 2rem;
+  font-size: var(--type-body);
+}
+.settings-branches .branch-table th {
+  padding: .4rem .65rem;
+  font-size: var(--type-support);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-branches .branch-table td {
+  padding: .45rem .65rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--type-body);
+}
+.settings-branches .branch-table td:first-child button {
+  max-width: 100%;
+  overflow: hidden;
+}
+.settings-branches .branch-table td:first-child button > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+  border: 0;
+  background: rgb(15 23 42 / .28);
+  cursor: default;
+}
+.settings-side-drawer {
+  position: fixed;
+  inset-block: var(--app-header-h, 3rem) 0;
+  inset-inline-end: 0;
+  z-index: 80;
+  width: 40vw;
+  min-width: 30rem;
+  max-width: 44rem;
+  overflow-y: auto;
+  padding: 1rem;
+  border-inline-start: 1px solid rgb(var(--border));
+  background: rgb(var(--surface));
+  box-shadow: -12px 0 32px rgb(15 23 42 / .16);
+}
+.settings-side-drawer .settings-drawer-heading {
+  position: sticky;
+  top: -1rem;
+  z-index: 2;
+  margin: -1rem -1rem .75rem;
+  padding: .75rem 1rem;
+  border-bottom: 1px solid rgb(var(--border));
+  background: rgb(var(--heading-bg));
+}
+.settings-side-drawer :where(.ui-input, .ui-select) {
+  min-height: 2rem;
+  height: 2rem;
+}
+.settings-side-drawer.branch-detail-card {
+  border: 0;
+  border-radius: 0;
+  background: rgb(var(--surface));
+}
+.settings-side-drawer .branch-editor-section,
+.settings-side-drawer.branch-detail-card > .grid {
+  padding: .75rem;
+  border: 1px solid rgb(var(--border));
+  border-radius: .45rem;
+  background: rgb(var(--surface));
+}
+.settings-side-drawer .branch-editor-section-title {
+  color: rgb(var(--brand-deep));
+  font-size: var(--type-body);
+  line-height: 1.2rem;
+  font-weight: 600;
+}
+.settings-side-drawer .branch-editor-form .ui-label {
+  margin-bottom: .2rem;
+  color: rgb(var(--fg-muted));
+  font-size: var(--type-support);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-side-drawer .branch-editor-form > .flex:last-child {
+  position: sticky;
+  bottom: -1rem;
+  margin: .75rem -1rem -1rem;
+  padding: .65rem 1rem;
+  border-top: 1px solid rgb(var(--border));
+  background: rgb(var(--surface));
+}
+@media (max-width: 900px) {
+  .settings-side-drawer {
+    width: min(92vw, 40rem);
+    min-width: 0;
   }
 }

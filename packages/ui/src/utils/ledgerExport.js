@@ -96,7 +96,10 @@ const csvCell = (v) => {
  */
 export const exportLedgerToExcel = ({
   companyName,
+  companyAddress = '',
   ledgerName,
+  periodFrom = '',
+  periodTo = '',
   openingBalance,
   closingBalance,
   rows,
@@ -107,11 +110,12 @@ export const exportLedgerToExcel = ({
 
   const data = [
     ['Company', companyName || ''],
-    ['Ledger', ledgerName || ''],
+    ['Address', companyAddress || ''],
+    ['Ledger Statement of', ledgerName || ''],
+    ['Period', `${periodFrom ? formatDateIn(periodFrom) : 'Beginning'} to ${periodTo ? formatDateIn(periodTo) : formatDateIn(localDateIso())}`],
     ['As of', formatDateIn(localDateIso())],
     ['Opening Balance', r2(openingBalance)],
-    ['Closing Balance', r2(closingBalance)],
-    [],
+    [], [],
     cols.map((c) => c.label),
     ...(Array.isArray(rows) ? rows : []).map((r) =>
       cols.map((c) => {
@@ -119,6 +123,7 @@ export const exportLedgerToExcel = ({
         return isNumericKey(c.key) ? r2(v) : v;
       })
     ),
+    cols.map((c) => c.key === 'particulars' ? 'Closing Balance' : c.key === 'runningBalance' ? r2(closingBalance) : ''),
   ];
 
   // BOM first: without it Excel guesses the encoding and mangles ₹.
@@ -140,7 +145,10 @@ export const exportLedgerToExcel = ({
 
 export const exportLedgerToPdf = async ({
   companyName,
+  companyAddress = '',
   ledgerName,
+  periodFrom = '',
+  periodTo = '',
   openingBalance,
   closingBalance,
   rows,
@@ -156,20 +164,30 @@ export const exportLedgerToPdf = async ({
   let y = 40;
 
   doc.setFontSize(14);
+  doc.setTextColor(15, 23, 42);
   doc.text(companyName || 'Company', marginX, y);
   y += 18;
 
+  if (companyAddress) {
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(String(companyAddress), marginX, y);
+    y += 14;
+  }
+
   doc.setFontSize(12);
-  doc.text(`Ledger: ${ledgerName || ''}`.trim(), marginX, y);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Ledger Statement of ${ledgerName || ''}`.trim(), marginX, y);
   y += 14;
 
   doc.setFontSize(10);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Period: ${periodFrom ? formatDateIn(periodFrom) : 'Beginning'} to ${periodTo ? formatDateIn(periodTo) : formatDateIn(localDateIso())}`, marginX, y);
+  y += 14;
   doc.text(`As of: ${formatDateIn(localDateIso())}`, marginX, y);
   y += 14;
   doc.text(`Opening Balance: ${r2(openingBalance)}`, marginX, y);
-  y += 14;
-  doc.text(`Closing Balance: ${r2(closingBalance)}`, marginX, y);
-  y += 18;
+  y += 32;
 
   const body = (Array.isArray(rows) ? rows : []).map((r) =>
     cols.map((c) => {
@@ -178,18 +196,25 @@ export const exportLedgerToPdf = async ({
       return String(v || '');
     })
   );
+  body.push(cols.map((c) => c.key === 'particulars' ? 'Closing Balance' : c.key === 'runningBalance' ? r2(closingBalance).toFixed(2) : ''));
 
   autoTable(doc, {
     startY: y,
     head: [cols.map((c) => c.label)],
     body,
-    styles: { fontSize: 8, cellPadding: 3, overflow: 'linebreak' },
-    headStyles: { fillColor: [245, 246, 248], textColor: 60 },
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak', fillColor: [255, 255, 255], textColor: [15, 23, 42], lineColor: [226, 232, 240], lineWidth: 0.35 },
+    headStyles: { fillColor: [245, 247, 250], textColor: [15, 23, 42], fontStyle: 'bold', lineColor: [226, 232, 240], lineWidth: 0.6 },
     didParseCell: (data) => {
       if (!data?.column) return;
       const col = cols[data.column.index];
       if (!col) return;
       if (isNumericKey(col.key)) data.cell.styles.halign = 'right';
+      if (data.section === 'body' && data.row.index === body.length - 1) {
+        data.cell.styles.fillColor = [245, 247, 250];
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.lineWidth = 0.6;
+      }
     },
   });
 
@@ -197,7 +222,7 @@ export const exportLedgerToPdf = async ({
   doc.save(safeName);
 };
 
-export const printLedger = ({ companyName, ledgerName, openingBalance, closingBalance, rows, columns }) => {
+export const printLedger = ({ companyName, companyAddress = '', ledgerName, periodFrom = '', periodTo = '', openingBalance, closingBalance, rows, columns }) => {
   const safe = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   // `arguments` is not bound inside an arrow function, and this module is ESM
@@ -225,6 +250,11 @@ export const printLedger = ({ companyName, ledgerName, openingBalance, closingBa
       return `<tr>${tds}</tr>`;
     })
     .join('');
+  const closingCells = cols.map((c) => {
+    if (c.key === 'particulars') return '<td>Closing Balance</td>';
+    if (c.key === 'runningBalance') return `<td class="right">${r2(closingBalance).toFixed(2)}</td>`;
+    return '<td></td>';
+  }).join('');
 
   const w = window.open('', '_blank');
   if (!w) return;
@@ -236,20 +266,23 @@ export const printLedger = ({ companyName, ledgerName, openingBalance, closingBa
   <meta charset="utf-8" />
   <title>${safe(ledgerName || 'Ledger')}</title>
   <style>
-    body{font-family: Arial, sans-serif; margin: 24px; color:#111;}
-    h1{font-size:18px; margin:0 0 6px;}
-    h2{font-size:14px; margin:0 0 12px; font-weight:normal; color:#333;}
-    .meta{font-size:12px; margin:0 0 12px; color:#333;}
+    body{font-family: Inter,Arial,sans-serif; margin: 24px; color:#0f172a;}
+    h1{font-size:18px; margin:0 0 5px;}
+    .address{font-size:11px;color:#64748b;margin-bottom:10px;}
+    h2{font-size:14px; margin:0 0 7px; font-weight:700; color:#0f172a;}
+    .meta{font-size:11px; margin:0 0 28px; color:#64748b;}
     table{width:100%; border-collapse:collapse; font-size:11px;}
-    th,td{border:1px solid #ddd; padding:6px; vertical-align:top;}
-    th{background:#f5f6f8; text-align:left;}
+    th,td{border:1px solid #e2e8f0; padding:7px; vertical-align:top;}
+    th{background:#f5f7fa;color:#0f172a;text-align:left;font-weight:700;}
+    tfoot td{background:#f5f7fa;color:#0f172a;font-weight:700;}
     .right{text-align:right;}
   </style>
 </head>
 <body>
   <h1>${safe(companyName || '')}</h1>
-  <h2>Ledger: ${safe(ledgerName || '')}</h2>
-  <div class="meta">As of: ${safe(formatDateIn(localDateIso()))} &nbsp; | &nbsp; Opening: ${r2(openingBalance).toFixed(2)} &nbsp; | &nbsp; Closing: ${r2(closingBalance).toFixed(2)}</div>
+  ${companyAddress ? `<div class="address">${safe(companyAddress)}</div>` : ''}
+  <h2>Ledger Statement of ${safe(ledgerName || '')}</h2>
+  <div class="meta">Period: ${safe(periodFrom ? formatDateIn(periodFrom) : 'Beginning')} to ${safe(periodTo ? formatDateIn(periodTo) : formatDateIn(localDateIso()))} &nbsp; | &nbsp; As of: ${safe(formatDateIn(localDateIso()))} &nbsp; | &nbsp; Opening: ${r2(openingBalance).toFixed(2)}</div>
   <table>
     <thead>
       <tr>
@@ -259,6 +292,7 @@ export const printLedger = ({ companyName, ledgerName, openingBalance, closingBa
     <tbody>
       ${htmlRows}
     </tbody>
+    <tfoot><tr>${closingCells}</tr></tfoot>
   </table>
 </body>
 </html>`);

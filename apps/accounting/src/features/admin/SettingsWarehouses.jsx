@@ -6,8 +6,9 @@ import { listBranches, listWarehouses, createWarehouse, updateWarehouse, deleteW
 import PopupSelect from '@ui/components/pickers/PopupSelect';
 import { GST_STATE_BY_CODE, getGstStateFromGstin } from '@ui/utils/gst';
 import Popover from '@ui/components/ui/Popover';
+import { Download, MoreVertical, Pencil, Plus, Power, Search, Trash2 } from 'lucide-react';
 
-export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
+export function SettingsWarehouses({ orgId, branchId, company, onWarehousesChanged }) {
   const [warehouses, setWarehouses] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -23,6 +24,7 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
   const [editSaving, setEditSaving] = useState(false);
   const [form, setForm] = useState({
     branchId: branchId ? String(branchId) : '',
+    code: '',
     name: '',
     addressLine1: '',
     addressLine2: '',
@@ -38,6 +40,7 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
 
   const [editForm, setEditForm] = useState({
     branchId: branchId ? String(branchId) : '',
+    code: '',
     name: '',
     addressLine1: '',
     addressLine2: '',
@@ -50,6 +53,13 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
     phone: '',
     email: '',
   });
+  const companyGstEnabled = Boolean(company?.profile?.taxCompliances?.gstEnabled ?? company?.gstEnabled ?? company?.gstin);
+
+  useEffect(() => {
+    if (!companyGstEnabled) return;
+    setForm((current) => current.gstRegistrationType === 'UNREGISTERED' ? { ...current, gstRegistrationType: 'REGULAR' } : current);
+    setEditForm((current) => current.gstRegistrationType === 'UNREGISTERED' ? { ...current, gstRegistrationType: 'REGULAR' } : current);
+  }, [companyGstEnabled]);
 
   const stateOptions = useMemo(() => {
     return Object.keys(GST_STATE_BY_CODE || {})
@@ -137,26 +147,31 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
 
       const payload = {
         branchId: selectedBranchId,
+        code: String(form.code || '').trim().toUpperCase(),
         name: String(form.name || '').trim(),
         addressLine1: String(form.addressLine1 || '').trim() || null,
         addressLine2: String(form.addressLine2 || '').trim() || null,
         city: String(form.city || '').trim() || null,
         state: String(form.state || '').trim() || null,
         country: String(form.country || '').trim() || null,
-        gstRegistrationType: String(form.gstRegistrationType || 'UNREGISTERED').trim(),
+        gstRegistrationType: companyGstEnabled && form.gstRegistrationType === 'UNREGISTERED' ? 'REGULAR' : String(form.gstRegistrationType || 'UNREGISTERED').trim(),
         gstin: String(form.gstin || '').trim() || null,
         contactPerson: String(form.contactPerson || '').trim() || null,
         phone: String(form.phone || '').trim() || null,
         email: String(form.email || '').trim() || null,
       };
 
+      if (!payload.code) {
+        setError('Warehouse code is required');
+        return;
+      }
       if (!payload.name) {
         setError('Warehouse name is required');
         return;
       }
 
-      if (payload.gstRegistrationType !== 'UNREGISTERED' && !payload.gstin) {
-        setError('GSTIN is required for registered warehouses');
+      if ((companyGstEnabled || payload.gstRegistrationType !== 'UNREGISTERED') && !payload.gstin) {
+        setError('GSTIN is mandatory while GST is enabled');
         return;
       }
 
@@ -167,13 +182,14 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
       if (typeof onWarehousesChanged === 'function') onWarehousesChanged();
       setForm({
         branchId: branchId ? String(branchId) : '',
+        code: '',
         name: '',
         addressLine1: '',
         addressLine2: '',
         city: '',
         state: '',
         country: 'India',
-        gstRegistrationType: 'UNREGISTERED',
+        gstRegistrationType: companyGstEnabled ? 'REGULAR' : 'UNREGISTERED',
         gstin: '',
         contactPerson: '',
         phone: '',
@@ -203,13 +219,14 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
     setViewWarehouseId(String(w.id));
     setEditForm({
       branchId: String(w.branchId || ''),
+      code: String(w.code || ''),
       name: String(w.name || '').trim(),
       addressLine1: String(w.addressLine1 || ''),
       addressLine2: String(w.addressLine2 || ''),
       city: String(w.city || ''),
       state: String(w.state || ''),
       country: String(w.country || 'India'),
-      gstRegistrationType: String(w.gstRegistrationType || 'UNREGISTERED'),
+      gstRegistrationType: companyGstEnabled && String(w.gstRegistrationType || '') === 'UNREGISTERED' ? 'REGULAR' : String(w.gstRegistrationType || 'UNREGISTERED'),
       gstin: String(w.gstin || ''),
       contactPerson: String(w.contactPerson || ''),
       phone: String(w.phone || ''),
@@ -242,8 +259,8 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
 
       if (!payload.branchId) throw new Error('Branch is required');
       if (!payload.name) throw new Error('Warehouse name is required');
-      if (payload.gstRegistrationType !== 'UNREGISTERED' && !payload.gstin) {
-        throw new Error('GSTIN is required for registered warehouses');
+      if ((companyGstEnabled || payload.gstRegistrationType !== 'UNREGISTERED') && !payload.gstin) {
+        throw new Error('GSTIN is mandatory while GST is enabled');
       }
 
       const res = await updateWarehouse(orgId, editingWarehouseId, payload);
@@ -276,6 +293,22 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
     }
   };
 
+  const toggleWarehouseStatus = async (warehouse) => {
+    setOpenMenuForWarehouseId(null);
+    setError('');
+    try {
+      const res = await updateWarehouse(orgId, warehouse.id, { isActive: warehouse.isActive === false });
+      const updated = res?.warehouse;
+      if (updated) setWarehouses((prev) => prev.map((item) => String(item.id) === String(updated.id) ? updated : item));
+      notify.success(`Warehouse marked ${updated?.isActive === false ? 'inactive' : 'active'}.`);
+      onWarehousesChanged?.();
+    } catch (err) {
+      const message = err.message || 'Failed to update warehouse status';
+      setError(message);
+      notify.error(message);
+    }
+  };
+
   const query = String(search || '').trim().toLowerCase();
   const filteredWarehouses = query
     ? warehouses.filter((w) => {
@@ -297,31 +330,19 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
   }, [warehouses, viewWarehouseId]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="ui-t-sec">Warehouses</div>
-        <button
-          type="button"
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 rounded-lg ui-btn ui-btn-primary"
-        >
-          + Create Warehouse
-        </button>
-      </div>
-
-      <div className="flex items-center justify-between gap-3">
-        <div className="w-full max-w-sm">
-          <div className="relative">
+    <div className="settings-warehouses settings-branches space-y-3">
+      <div className="branch-list-toolbar flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[rgb(var(--heading-bg))] px-3 py-2">
+        <div><div className="ui-t-sec">Warehouses</div><div className="ui-caption">{filteredWarehouses.length} {filteredWarehouses.length === 1 ? 'warehouse' : 'warehouses'}</div></div>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <div className="relative w-full max-w-xs">
+            <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 ui-muted" aria-hidden="true" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search warehouses"
-              className="ui-input w-full ui-surface"
+              className="ui-input w-full bg-[rgb(var(--surface))] ps-8"
             />
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs ui-muted whitespace-nowrap">{filteredWarehouses.length} rows</span>
           <button
             type="button"
             onClick={() =>
@@ -337,21 +358,26 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
                 rows: filteredWarehouses,
               })
             }
-            className="ui-btn ui-btn-secondary"
+            className="ui-btn ui-btn-secondary ui-btn-sm"
           >
-            Export
+            <Download size={14} /> Export
+          </button>
+          <button type="button" onClick={() => { setShowForm((value) => !value); closeDetails(); }} className="ui-btn ui-btn-primary ui-btn-sm">
+            <Plus size={14} /> Create Warehouse
           </button>
         </div>
       </div>
 
       {error && <div className="text-sm text-[rgb(var(--neg))] bg-[rgb(var(--neg-soft))] border border-[rgb(var(--neg)/0.35)] rounded-lg p-3">{error}</div>}
 
+      {selectedWarehouse || showForm ? <button type="button" className="settings-drawer-backdrop" aria-label="Close warehouse drawer" onClick={() => { setShowForm(false); closeDetails(); }} /> : null}
+
       {selectedWarehouse ? (
-        <div className="ui-surface border rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="settings-side-drawer branch-detail-card space-y-3">
+          <div className="settings-drawer-heading flex items-center justify-between">
             <div>
-              <div className="ui-t-sec">Warehouse Details</div>
-              <div className="text-xs ui-muted">{selectedWarehouse.name || ''}</div>
+              <div className="ui-t-sec">{editingWarehouseId ? 'Edit Warehouse' : 'Warehouse Details'}</div>
+              <div className="ui-caption">{selectedWarehouse.name || ''}</div>
             </div>
             <div className="flex gap-2">
               {editingWarehouseId ? null : (
@@ -370,8 +396,12 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
           </div>
 
           {editingWarehouseId ? (
-            <form onSubmit={saveEdit} className="space-y-4">
-              <div className="grid grid-cols-12 gap-4">
+            <form onSubmit={saveEdit} className="branch-editor-form space-y-3">
+              <div className="branch-editor-section grid grid-cols-12 gap-3">
+                <div className="col-span-12 sm:col-span-6">
+                  <label className="ui-label">Warehouse Code</label>
+                  <input className="ui-input w-full cursor-not-allowed bg-[rgb(var(--surface-sunken))]" value={editForm.code} readOnly aria-readonly="true" title="Warehouse code cannot be changed after creation" />
+                </div>
                 <div className="col-span-12 sm:col-span-6">
                   <PopupSelect
                     label="Branch *"
@@ -384,13 +414,14 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
                     placeholder="Select branch"
                   />
                 </div>
-                <div className="col-span-12 sm:col-span-6">
-                  <label className="ui-label" htmlFor="settingswarehouses-warehouse-name">Warehouse Name *</label>
-                  <input id="settingswarehouses-warehouse-name" className="ui-input w-full" value={editForm.name} onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))} required />
+                <div className="col-span-12">
+                  <label className="ui-label">Warehouse Name *</label>
+                  <input className="ui-input w-full" value={editForm.name} onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))} required />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="branch-editor-section grid grid-cols-2 gap-3">
+                <div className="branch-editor-section-title col-span-2">Address</div>
                 <div>
                   <label className="ui-label" htmlFor="settingswarehouses-address-line-1">Address Line 1</label>
                   <input id="settingswarehouses-address-line-1" className="ui-input w-full" value={editForm.addressLine1} onChange={(e) => setEditForm((p) => ({ ...p, addressLine1: e.target.value }))} />
@@ -424,11 +455,12 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="branch-editor-section grid grid-cols-2 gap-3">
+                <div className="branch-editor-section-title col-span-2">GST Details</div>
                 <div>
-                  <label className="ui-label" htmlFor="settingswarehouses-gst-registration">GST Registration</label>
-                  <select id="settingswarehouses-gst-registration" className="ui-select w-full ui-surface" value={editForm.gstRegistrationType} onChange={(e) => setEditForm((p) => ({ ...p, gstRegistrationType: e.target.value }))}>
-                    <option value="UNREGISTERED">Unregistered</option>
+                  <label className="ui-label">GST Registration</label>
+                  <select className="ui-select w-full ui-surface" value={editForm.gstRegistrationType} onChange={(e) => setEditForm((p) => ({ ...p, gstRegistrationType: e.target.value }))}>
+                    {!companyGstEnabled ? <option value="UNREGISTERED">Unregistered</option> : null}
                     <option value="REGULAR">Regular</option>
                     <option value="COMPOSITION">Composition</option>
                   </select>
@@ -449,7 +481,8 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="branch-editor-section grid grid-cols-3 gap-3">
+                <div className="branch-editor-section-title col-span-3">Contact</div>
                 <div>
                   <label className="ui-label" htmlFor="settingswarehouses-contact-person">Contact Person</label>
                   <input id="settingswarehouses-contact-person" className="ui-input w-full" value={editForm.contactPerson} onChange={(e) => setEditForm((p) => ({ ...p, contactPerson: e.target.value }))} />
@@ -476,6 +509,14 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
           ) : (
             <div className="grid grid-cols-12 gap-4 text-sm">
               <div className="col-span-12 sm:col-span-4">
+                <div className="ui-detail-label">Warehouse Code</div>
+                <div className="ui-detail-value ui-detail-mono">{selectedWarehouse.code || ''}</div>
+              </div>
+              <div className="col-span-12 sm:col-span-4">
+                <div className="ui-detail-label">Warehouse Name</div>
+                <div className="ui-detail-value">{selectedWarehouse.name || ''}</div>
+              </div>
+              <div className="col-span-12 sm:col-span-4">
                 <div className="ui-detail-label">Branch</div>
                 <div className="ui-detail-value">
                   {(() => {
@@ -491,6 +532,10 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
               <div className="col-span-12 sm:col-span-4">
                 <div className="ui-detail-label">GSTIN</div>
                 <div className="ui-detail-value">{selectedWarehouse.gstin || '—'}</div>
+              </div>
+              <div className="col-span-12 sm:col-span-4">
+                <div className="ui-detail-label">Status</div>
+                <div className="ui-detail-value">{selectedWarehouse.isActive !== false ? 'Active' : 'Inactive'}</div>
               </div>
 
               <div className="col-span-12 sm:col-span-6">
@@ -524,11 +569,15 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
       ) : null}
 
       {showForm && (
-        <form onSubmit={onSubmit} className="ui-surface border rounded-xl p-5 space-y-4">
-          <div className="ui-t-sec">New Warehouse</div>
+        <form onSubmit={onSubmit} className="settings-side-drawer branch-create-form branch-editor-form space-y-3">
+          <div className="settings-drawer-heading flex items-center justify-between"><div><div className="ui-t-sec">New Warehouse</div><div className="ui-caption">Create a stock location under a branch</div></div><button type="button" onClick={() => setShowForm(false)} className="ui-btn ui-btn-ghost ui-btn-sm">Close</button></div>
 
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12 sm:col-span-6">
+          <div className="branch-editor-section grid grid-cols-12 gap-3">
+            <div className="col-span-12 sm:col-span-4">
+              <label className="ui-label">Warehouse Code *</label>
+              <input className="ui-input w-full ui-mono" value={form.code} onChange={onChange('code')} required maxLength={20} />
+            </div>
+            <div className="col-span-12 sm:col-span-4">
               <PopupSelect
                 label="Branch *"
                 value={form.branchId}
@@ -540,13 +589,14 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
                 placeholder="Select branch"
               />
             </div>
-            <div className="col-span-12 sm:col-span-6">
-              <label className="ui-label" htmlFor="settingswarehouses-warehouse-name-2">Warehouse Name *</label>
-              <input id="settingswarehouses-warehouse-name-2" className="ui-input w-full" value={form.name} onChange={onChange('name')} required />
+            <div className="col-span-12 sm:col-span-4">
+              <label className="ui-label">Warehouse Name *</label>
+              <input className="ui-input w-full" value={form.name} onChange={onChange('name')} required />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="branch-editor-section grid grid-cols-2 gap-3">
+            <div className="branch-editor-section-title col-span-2">Address</div>
             <div>
               <label className="ui-label" htmlFor="settingswarehouses-address-line-1-2">Address Line 1</label>
               <input id="settingswarehouses-address-line-1-2" className="ui-input w-full" value={form.addressLine1} onChange={onChange('addressLine1')} />
@@ -557,7 +607,8 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="branch-editor-section grid grid-cols-3 gap-3">
+            <div className="branch-editor-section-title col-span-3">Location</div>
             <div>
               <label className="ui-label" htmlFor="settingswarehouses-city-2">City</label>
               <input id="settingswarehouses-city-2" className="ui-input w-full" value={form.city} onChange={onChange('city')} />
@@ -580,11 +631,12 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="branch-editor-section grid grid-cols-2 gap-3">
+            <div className="branch-editor-section-title col-span-2">GST Details</div>
             <div>
-              <label className="ui-label" htmlFor="settingswarehouses-gst-registration-2">GST Registration</label>
-              <select id="settingswarehouses-gst-registration-2" className="ui-select w-full ui-surface" value={form.gstRegistrationType} onChange={onChange('gstRegistrationType')}>
-                <option value="UNREGISTERED">Unregistered</option>
+              <label className="ui-label">GST Registration</label>
+              <select className="ui-select w-full ui-surface" value={form.gstRegistrationType} onChange={onChange('gstRegistrationType')}>
+                {!companyGstEnabled ? <option value="UNREGISTERED">Unregistered</option> : null}
                 <option value="REGULAR">Regular</option>
                 <option value="COMPOSITION">Composition</option>
               </select>
@@ -600,7 +652,8 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="branch-editor-section grid grid-cols-3 gap-3">
+            <div className="branch-editor-section-title col-span-3">Contact</div>
             <div>
               <label className="ui-label" htmlFor="settingswarehouses-contact-person-2">Contact Person</label>
               <input id="settingswarehouses-contact-person-2" className="ui-input w-full" value={form.contactPerson} onChange={onChange('contactPerson')} />
@@ -623,7 +676,7 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
         </form>
       )}
 
-      <div className="ui-surface border rounded-xl overflow-hidden">
+      <div className="branch-table-wrap ui-surface border rounded-lg overflow-hidden">
         {loading ? (
           <TableSkeleton rows={6} cols={5} />
         ) : warehouses.length === 0 ? (
@@ -631,34 +684,35 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
         ) : filteredWarehouses.length === 0 ? (
           <div className="px-6 py-10 text-center ui-muted">No warehouses found.</div>
         ) : (
-          <table className="ui-table w-full ui-settled">
+          <table className="branch-table ui-table w-full table-fixed ui-settled">
+            <colgroup><col style={{ width: '14%' }} /><col style={{ width: '22%' }} /><col style={{ width: '18%' }} /><col style={{ width: '16%' }} /><col style={{ width: '18%' }} /><col style={{ width: '8%' }} /><col style={{ width: '4%' }} /></colgroup>
             <thead className="ui-sunken border-b">
               <tr>
+                <th className="ui-th">Warehouse Code</th>
+                <th className="ui-th">Warehouse Name</th>
                 <th className="ui-th">Branch</th>
-                <th className="ui-th">Warehouse</th>
                 <th className="ui-th">Location</th>
-                <th className="ui-th">Address</th>
-                <th className="ui-th">GST</th>
+                <th className="ui-th">GSTN</th>
+                <th className="ui-th">Status</th>
                 <th className="ui-th ui-num">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {filteredWarehouses.map((w) => (
                 <tr key={w.id} className="ui-hover-sunken">
+                  <td className="ui-col-id px-4 py-3 ui-fg ui-mono">{w.code || ''}</td>
+                  <td className="px-4 py-3 font-medium ui-fg">
+                    <button type="button" className="text-left hover:underline" onClick={() => openView(w.id)}>{w.name || ''}</button>
+                  </td>
                   <td className="ui-col-meta px-4 py-3 ui-fg">
                     {(() => {
                       const b = branchLookup.get(String(w.branchId || ''));
                       return (b && (b.branchName || b.name)) ? String(b.branchName || b.name) : '—';
                     })()}
                   </td>
-                  <td className="px-4 py-3 font-medium ui-fg">
-                    <button type="button" className="text-left hover:underline" onClick={() => openView(w.id)}>
-                      {w.name || '—'}
-                    </button>
-                  </td>
-                  <td className="ui-col-meta px-4 py-3 ui-fg">{[w.city, w.state].filter(Boolean).join(', ') || '—'}</td>
-                  <td className="ui-col-meta px-4 py-3 ui-fg">{[w.addressLine1, w.addressLine2].filter(Boolean).join(', ') || '—'}</td>
-                  <td className="ui-col-id px-4 py-3 ui-fg">{w.gstin || '—'}</td>
+                  <td className="ui-col-meta px-4 py-3 ui-fg">{w.city || ''}</td>
+                  <td className="ui-col-id px-4 py-3 ui-fg">{w.gstin || ''}</td>
+                  <td className="ui-col-meta px-4 py-3"><span className={`px-2 py-1 rounded-lg text-xs font-medium ${w.isActive !== false ? 'bg-[rgb(var(--pos-soft))] text-[rgb(var(--pos))]' : 'bg-[rgb(var(--neg-soft))] text-[rgb(var(--neg))]'}`}>{w.isActive !== false ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 text-right">
                     <div className="relative inline-block text-left" data-warehouse-actions>
                       <button
@@ -668,10 +722,10 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
                           e.stopPropagation();
                           setOpenMenuForWarehouseId((prev) => (prev === w.id ? null : w.id));
                         }}
-                        className="px-2 py-1 rounded-lg border ui-surface ui-hover-sunken"
-                        aria-label="Warehouse actions"
+                        className="ui-icon-btn"
+                        aria-label={`Actions for ${w.name}`}
                       >
-                        ⋯
+                        <MoreVertical size={15} />
                       </button>
 
                       {openMenuForWarehouseId === w.id ? (
@@ -681,14 +735,14 @@ export function SettingsWarehouses({ orgId, branchId, onWarehousesChanged }) {
                           minWidth={176}
                           maxWidth={240}
                         >
-                          <button type="button" onClick={() => openView(w.id)} className="w-full text-left px-3 py-2 text-sm ui-hover-sunken">
-                            View
+                          <button type="button" onClick={() => beginEdit(w)} className="report-menu-item flex items-center gap-2">
+                            <Pencil size={14} /> Edit
                           </button>
-                          <button type="button" onClick={() => beginEdit(w)} className="w-full text-left px-3 py-2 text-sm ui-hover-sunken">
-                            Edit
+                          <button type="button" onClick={() => toggleWarehouseStatus(w)} className="report-menu-item flex items-center gap-2">
+                            <Power size={14} /> Mark {w.isActive !== false ? 'inactive' : 'active'}
                           </button>
-                          <button type="button" onClick={() => removeWarehouse(w.id)} className="w-full text-left px-3 py-2 text-sm text-[rgb(var(--neg))] hover:bg-[rgb(var(--neg-soft))]">
-                            Delete
+                          <button type="button" onClick={() => removeWarehouse(w.id)} className="report-menu-item flex items-center gap-2 text-[rgb(var(--neg))] hover:bg-[rgb(var(--neg-soft))]">
+                            <Trash2 size={14} /> Delete
                           </button>
                         </Popover>
                       ) : null}

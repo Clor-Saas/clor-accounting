@@ -6,6 +6,15 @@ import ReportsWorkspace, { expandReportRowsForExport, normalizedReportRows } fro
 const company = { id: 1, name: 'Neev' };
 
 describe('ReportsWorkspace', () => {
+  it('can return from the dedicated reports workspace to the application', () => {
+    const onExit = vi.fn();
+    render(<ReportsWorkspace db={{}} currentCompany={company} onExit={onExit} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to application' }));
+
+    expect(onExit).toHaveBeenCalledOnce();
+  });
+
   it('opens with the category sidebar and the streamlined sales report list', () => {
     render(<ReportsWorkspace db={{ invoices: [] }} currentCompany={company} />);
 

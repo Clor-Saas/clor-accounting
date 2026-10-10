@@ -79,11 +79,11 @@ export const DocFormActions = ({
    */
   const shellClass = title
     ? ownCard
-      ? `ui-card flex items-center justify-between gap-3 flex-wrap px-5 py-4 ${sticky ? 'sticky top-0 z-30' : ''}`
+      ? `ui-card ui-page-heading flex items-center justify-between gap-3 flex-wrap px-5 py-4 ${sticky ? 'sticky top-0 z-30' : ''}`
       : // `rounded-t-xl` because the negative margins take this bar out to the
         // card's border box, where a square fill was overprinting the card's own
         // rounded top corners.
-        `flex items-center justify-between gap-3 flex-wrap -mx-4 -mt-4 mb-1 px-4 py-3 rounded-t-xl ${
+        `ui-page-heading flex items-center justify-between gap-3 flex-wrap -mx-4 -mt-4 mb-1 px-4 py-3 rounded-t-xl ${
           sticky ? 'sticky top-0 z-30' : ''
         }`
     : 'flex items-center justify-end gap-2 -mb-2';

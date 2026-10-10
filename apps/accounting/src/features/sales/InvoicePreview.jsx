@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import { ACCENT_OPTIONS, getDocSettings } from '@ui/utils/docSettings';
 import { amountInWordsInr, formatMoney } from '@ui/utils/money';
 import { GST_STATE_BY_CODE } from '@ui/utils/gst';
+import { getInvoicePrintSettings } from '@ui/utils/invoicePrintSettings';
 import {
   getInvoicePrefs,
   isInvoicePrefOn,
@@ -57,6 +58,8 @@ const batchNote = (l) =>
 
 const InvoicePreview = ({ db, currentCompany, invoice }) => {
   const docSettings = useMemo(() => getDocSettings(db, currentCompany), [db, currentCompany]);
+  const printSettings = useMemo(() => getInvoicePrintSettings(docSettings), [docSettings]);
+  const printOn = (key) => printSettings.options[key] !== false;
 
   // Signed e-invoice QR, rendered from the JWT the IRP returned.
   const [irnQrDataUrl, setIrnQrDataUrl] = useState('');
@@ -139,6 +142,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
    * depend on which paper design they picked.
    */
   const referenceLines = () => {
+    if (!printOn('documentReferences')) return [];
     const rows = [];
     const push = (label, value) => {
       const v = String(value ?? '').trim();
@@ -187,7 +191,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
 
   /** Where to send the money. Nothing renders when there is nothing to say. */
   const paymentBlock = () => {
-    if (!bankAccount && !upiQrDataUrl) return null;
+    if (!printOn('paymentDetails') || (!bankAccount && !upiQrDataUrl)) return null;
     return (
       <div className="flex items-start justify-between gap-3 border rounded-lg p-3">
         <div className="min-w-0 text-xs text-gray-700">
@@ -217,6 +221,13 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
   const accent = ACCENT_OPTIONS.find((a) => a.id === accentId) || ACCENT_OPTIONS[0];
 
   const company = currentCompany || {};
+  const companyLogo = (className = 'h-14 w-14') => company?.logo ? (
+    <img
+      src={company.logo}
+      alt={`${company?.name || 'Company'} logo`}
+      className={`${className} shrink-0 object-contain`}
+    />
+  ) : null;
   const customer = useMemo(() => {
     const id = invoice?.customerId ? parseInt(invoice.customerId) : null;
     if (!id) return null;
@@ -241,6 +252,13 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
   }, [db, company.id]);
 
   const lines = Array.isArray(invoice?.items) ? invoice.items : [];
+  const itemLabel = (item, line) => {
+    const name = String(item?.name || line?.name || line?.description || '').trim();
+    const code = String(item?.code || line?.itemCode || '').trim();
+    if (printSettings.itemNameStyle === 'code') return code || name;
+    if (printSettings.itemNameStyle === 'both') return [code, name].filter(Boolean).join(' — ');
+    return name || code;
+  };
 
   const customerAddress = useMemo(() => {
     const addr = customer?.billingAddress || customer?.shippingAddress || {};
@@ -284,12 +302,26 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
   const content = (
     <div className="bg-white text-gray-900 rounded-xl p-6 space-y-4">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-lg font-bold text-gray-900">{company?.name || 'Company'}</div>
-          {company?.gstin ? <div className="text-xs text-gray-500">GSTIN: {company.gstin}</div> : null}
+        <div className="flex items-start gap-3 min-w-0">
+          {companyLogo()}
+          <div className="min-w-0">
+            <div className="text-lg font-bold text-gray-900">{company?.name || 'Company'}</div>
+            {printOn('companyAddress') && companyAddress ? <div className="text-xs text-gray-500">{companyAddress}</div> : null}
+          {(printOn('companyPhone') && company?.phone) || (printOn('companyEmail') && company?.email) || (printOn('companyWebsite') && company?.website) ? (
+            <div className="text-xs text-gray-500">
+              {[printOn('companyPhone') ? company.phone : '', printOn('companyEmail') ? company.email : '', printOn('companyWebsite') ? company.website : ''].filter(Boolean).join(' · ')}
+            </div>
+          ) : null}
+          {printOn('companyGstin') && company?.gstin ? <div className="text-xs text-gray-500">GSTIN: {company.gstin}</div> : null}
+          {printOn('companyPan') && company?.pan ? <div className="text-xs text-gray-500">PAN: {company.pan}</div> : null}
+          {printOn('companyCin') && company?.cin ? <div className="text-xs text-gray-500">CIN: {company.cin}</div> : null}
+          {printOn('companyUdyam') && company?.udyamNumber ? <div className="text-xs text-gray-500">Udyam: {company.udyamNumber}{company?.enterpriseType ? ` · ${company.enterpriseType}` : ''}</div> : null}
+            {printOn('companyActivity') && company?.activityType ? <div className="text-xs text-gray-500">Activity: {company.activityType}</div> : null}
+          </div>
         </div>
         <div className="text-right">
-          <div className="text-sm font-semibold text-gray-900">Invoice</div>
+          <div className="text-sm font-semibold text-gray-900">{printSettings.title}</div>
+          {printSettings.subtitle ? <div className="text-xs text-gray-500">{printSettings.subtitle}</div> : null}
           <div className="text-xs text-gray-500">No: {invoice?.number || '-'}</div>
           <div className="text-xs text-gray-500">Date: {invoice?.date || '-'}</div>
         </div>
@@ -299,12 +331,14 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
         <div className="space-y-2">
           <div className="text-xs font-semibold text-gray-700 uppercase">Bill To</div>
           <div className="text-sm font-semibold text-gray-900">{invoice?.customerName || customer?.displayName || customer?.name || '-'}</div>
-          {customerAddress ? <div className="text-xs text-gray-500">{customerAddress}</div> : null}
-          {invoice?.customerGstin ? <div className="text-xs text-gray-500">GSTIN: {invoice.customerGstin}</div> : null}
+          {printOn('customerAddress') && customerAddress ? <div className="text-xs text-gray-500">{customerAddress}</div> : null}
+          {printOn('customerGstin') && invoice?.customerGstin ? <div className="text-xs text-gray-500">GSTIN: {invoice.customerGstin}</div> : null}
+          {printOn('customerPan') && (invoice?.customerPan || customer?.pan) ? <div className="text-xs text-gray-500">PAN: {invoice?.customerPan || customer?.pan}</div> : null}
+          {printOn('customerState') && (customer?.state || customer?.billingAddress?.state) ? <div className="text-xs text-gray-500">State: {customer?.state || customer?.billingAddress?.state}</div> : null}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <InfoRow label="Due Date" value={invoice?.dueDate || ''} right />
-          <InfoRow label="Place of Supply" value={invoice?.placeOfSupplyState || ''} right />
+          {printOn('placeOfSupply') ? <InfoRow label="Place of Supply" value={invoice?.placeOfSupplyState || ''} right /> : null}
           <InfoRow label="Tax Type" value={invoice?.taxType ? String(invoice.taxType).replace('_', ' / ') : ''} right />
           <InfoRow label="Status" value={invoice?.status || ''} right />
           {referenceRows()}
@@ -320,8 +354,8 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
+              {printOn('quantity') ? <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th> : null}
+              {printOn('rate') ? <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rate</th> : null}
               <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
             </tr>
           </thead>
@@ -335,15 +369,15 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
             ) : (
               lines.map((l, idx) => {
                 const item = l?.itemId ? itemsById.get(String(l.itemId)) : null;
-                const name = item?.name || l?.name || l?.description || '';
+                const name = itemLabel(item, l);
                 const qty = Number(l?.quantity ?? 0);
                 const rate = Number(l?.rate ?? 0);
                 const total = Number(l?.lineTotal ?? l?.amount ?? 0);
                 return (
                   <tr key={idx}>
-                    <td className="px-3 py-2 text-sm text-gray-900">{name || '-'}{batchNote(l) ? <div className="text-[10px] text-gray-500">{batchNote(l)}</div> : null}</td>
-                    <td className="px-3 py-2 text-sm text-right">{Number.isFinite(qty) ? qty : '-'}</td>
-                    <td className="px-3 py-2 text-sm text-right">{formatMoney(Number.isFinite(rate) ? rate : 0, currentCompany)}</td>
+                    <td className="px-3 py-2 text-sm text-gray-900">{name || '-'}{printOn('batchDetails') && batchNote(l) ? <div className="text-[10px] text-gray-500">{batchNote(l)}</div> : null}</td>
+                    {printOn('quantity') ? <td className="px-3 py-2 text-sm text-right">{Number.isFinite(qty) ? qty : '-'}</td> : null}
+                    {printOn('rate') ? <td className="px-3 py-2 text-sm text-right">{formatMoney(Number.isFinite(rate) ? rate : 0, currentCompany)}</td> : null}
                     <td className="px-3 py-2 text-sm text-right font-medium">{formatMoney(Number.isFinite(total) ? total : 0, currentCompany)}</td>
                   </tr>
                 );
@@ -380,7 +414,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
             <span>{formatMoney(Number(invoice?.total ?? 0), currentCompany)}</span>
           </div>
           <TdsLines invoice={invoice} currentCompany={currentCompany} />
-          {prefOn('amountInWords') ? (
+          {printOn('amountInWords') && prefOn('amountInWords') ? (
             <div className="border-t pt-2 mt-2 text-xs text-gray-600">{amountInWordsInr(Number(invoice?.total ?? 0))}</div>
           ) : null}
         </div>
@@ -407,7 +441,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
             .join(', ')}
         </div>
       ) : null}
-      {prefOn('terms') && String(docSettings?.templates?.invoice?.termsText || '').trim() ? (
+      {printOn('terms') && prefOn('terms') && String(docSettings?.templates?.invoice?.termsText || '').trim() ? (
         <div className="border rounded-lg p-3 text-xs text-gray-600 whitespace-pre-line">
           <div className="font-semibold uppercase text-gray-700 mb-1">Terms &amp; Conditions</div>
           {docSettings.templates.invoice.termsText}
@@ -422,17 +456,20 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
           ))}
         </div>
       ) : null}
-      {prefOn('declaration') && String(docSettings?.templates?.invoice?.declarationText || '').trim() ? (
+      {printOn('declaration') && prefOn('declaration') && String(docSettings?.templates?.invoice?.declarationText || '').trim() ? (
         <div className="border rounded-lg p-3 text-xs text-gray-600 whitespace-pre-line">
           {docSettings.templates.invoice.declarationText}
         </div>
       ) : null}
+      {printOn('jurisdiction') && printSettings.jurisdictionText ? <div className="text-xs text-gray-600">{printSettings.jurisdictionText}</div> : null}
+      {printOn('preparedBy') && printSettings.preparedByText ? <div className="text-xs text-gray-600">Prepared / verified by: {printSettings.preparedByText}</div> : null}
+      {printOn('footerNote') && printSettings.footerText ? <div className="text-xs text-center text-gray-500">{printSettings.footerText}</div> : null}
     </div>
   );
 
   if (templateId === 'modern') {
     return (
-      <div className="printable space-y-4">
+      <div className="printable space-y-4" data-invoice-preview>
         <div className="flex items-stretch gap-3">
           <div className={`w-2 rounded-lg ${accent.barClass}`} />
           <div className="flex-1">{content}</div>
@@ -442,12 +479,12 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
   }
 
   if (templateId === 'minimal') {
-    return <div className="printable space-y-4">{content}</div>;
+    return <div className="printable space-y-4" data-invoice-preview>{content}</div>;
   }
 
   if (templateId === 'compact') {
     return (
-      <div className="printable space-y-3">
+      <div className="printable space-y-3" data-invoice-preview>
         <div className="border rounded-lg overflow-hidden">
           <div className={`h-2 ${accent.barClass}`} />
           <div className="p-3">{content}</div>
@@ -458,15 +495,185 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
 
   if (templateId === 'bold') {
     return (
-      <div className="printable space-y-3">
+      <div className="printable space-y-3" data-invoice-preview>
         <div className={`rounded-lg p-3 text-white ${accent.barClass}`}>
           <div className="flex items-center justify-between">
             <div className="font-bold">{company?.name || 'Company'}</div>
-            <div className="text-sm font-semibold">Invoice</div>
+            <div className="text-sm font-semibold">{printSettings.title}</div>
           </div>
           <div className="text-xs opacity-95">No: {invoice?.number || '-'}</div>
         </div>
         <div className="bg-white border rounded-lg p-4">{content}</div>
+      </div>
+    );
+  }
+
+  if (templateId === 'classic') {
+    const wholeMoney = (value) => formatMoney(Math.round(Number(value || 0)), currentCompany).replace(/\.00$/, '');
+    const wholeNumber = (value) => Math.round(Number(value || 0)).toLocaleString('en-IN');
+    const hasBatchDetails = printOn('batchDetails') && lines.some((line) => batchNote(line));
+    const hasPartNumbers = printOn('partNumber') && lines.some((line) => {
+      const item = line?.itemId ? itemsById.get(String(line.itemId)) : null;
+      return String(line?.partNumber || item?.partNumber || '').trim();
+    });
+    const hasTransport = printOn('dispatchDetails') && Boolean(
+      invoice?.transporterName || invoice?.vehicleNo || invoice?.lrNumber || invoice?.lrDate
+    );
+    const hasReference = printOn('documentReferences') && Boolean(invoice?.refNo || invoice?.refDate);
+    const hasOrder = printOn('orderDetails') && Boolean(invoice?.orderNumber || invoice?.workOrderNo);
+    const taxRows = Array.from(lines.reduce((map, line) => {
+      const item = line?.itemId ? itemsById.get(String(line.itemId)) : null;
+      const hsn = String(line?.hsnSac || item?.hsnSac || 'Unclassified');
+      const current = map.get(hsn) || { hsn, taxable: 0, rate: Number(line?.gstRate || 0), cgst: 0, sgst: 0, igst: 0, tax: 0 };
+      current.taxable += Number(line?.taxableAmount ?? line?.amount ?? 0);
+      current.cgst += Number(line?.cgstAmount || 0);
+      current.sgst += Number(line?.sgstAmount || 0);
+      current.igst += Number(line?.igstAmount || 0);
+      current.tax += Number(line?.gstAmount ?? (Number(line?.cgstAmount || 0) + Number(line?.sgstAmount || 0) + Number(line?.igstAmount || 0)));
+      map.set(hsn, current);
+      return map;
+    }, new Map()).values());
+    const ship = invoice?.shipToAddress;
+    const shipText = ship ? [ship.label, ship.line1, ship.line2, ship.city, ship.state, ship.pincode].filter(Boolean).join(', ') : '';
+    const headerCell = 'px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-white';
+    const valueCell = 'px-2 py-2 text-xs text-gray-800 align-top';
+    return (
+      <div className="printable mx-auto max-w-[980px] bg-white text-gray-900" data-invoice-preview>
+        <div className={`h-2 ${accent.barClass}`} />
+        <div className={printSettings.margin === 'compact' ? 'p-4 space-y-3' : 'p-6 space-y-4'}>
+          <header className="flex items-start justify-between gap-6">
+            <div className="flex items-start gap-4 min-w-0">
+              {companyLogo()}
+              <div className="min-w-0">
+                <div className="text-xl font-bold">{company?.name || 'Company'}</div>
+                {printOn('companyAddress') && companyAddress ? <div className="text-xs text-gray-600">{companyAddress}</div> : null}
+                <div className="text-xs text-gray-600">
+                  {[printOn('companyPhone') ? company?.phone : '', printOn('companyEmail') ? company?.email : '', printOn('companyWebsite') ? company?.website : ''].filter(Boolean).join(' · ')}
+                </div>
+                <div className="text-xs text-gray-600">
+                  {[printOn('companyGstin') && company?.gstin ? `GSTIN: ${company.gstin}` : '', printOn('companyPan') && company?.pan ? `PAN: ${company.pan}` : '', printOn('companyCin') && company?.cin ? `CIN: ${company.cin}` : ''].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-2xl font-extrabold tracking-wide text-slate-900">{printSettings.title}</div>
+              {printSettings.subtitle ? <div className="text-xs text-gray-500">{printSettings.subtitle}</div> : null}
+              <div className="mt-2 text-xs font-semibold">{printSettings.copyLabel}</div>
+            </div>
+          </header>
+
+          <section className="rounded-lg border overflow-hidden">
+            <div className="bg-slate-100 px-3 py-1.5 text-xs font-bold text-center">Invoice details</div>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 p-3 text-xs">
+              <div className="grid grid-cols-[8rem_1fr] gap-2"><b>Invoice no.</b><span>{invoice?.number || '-'}</span></div>
+              {hasTransport && invoice?.transporterName ? <div className="grid grid-cols-[8rem_1fr] gap-2"><b>Transporter</b><span>{invoice.transporterName}</span></div> : <div />}
+              <div className="grid grid-cols-[8rem_1fr] gap-2"><b>Invoice date</b><span>{invoice?.date || '-'}</span></div>
+              {hasTransport && invoice?.vehicleNo ? <div className="grid grid-cols-[8rem_1fr] gap-2"><b>Vehicle no.</b><span>{invoice.vehicleNo}</span></div> : <div />}
+              {hasReference ? <div className="grid grid-cols-[8rem_1fr] gap-2"><b>Reference</b><span>{[invoice?.refNo, invoice?.refDate].filter(Boolean).join(' · ')}</span></div> : null}
+              {hasTransport && (invoice?.lrNumber || invoice?.lrDate) ? <div className="grid grid-cols-[8rem_1fr] gap-2"><b>LR / GR</b><span>{[invoice?.lrNumber, invoice?.lrDate].filter(Boolean).join(' · ')}</span></div> : null}
+              {printOn('documentReferences') ? <div className="grid grid-cols-[8rem_1fr] gap-2"><b>Due date</b><span>{invoice?.dueDate || '—'}</span></div> : null}
+              {hasOrder ? <div className="grid grid-cols-[8rem_1fr] gap-2"><b>Order</b><span>{invoice?.orderNumber || invoice?.workOrderNo}</span></div> : null}
+            </div>
+          </section>
+
+          <section className={`grid ${printOn('consignee') && shipText ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
+            <div className="rounded-lg border p-3 text-xs">
+              <div className="font-bold uppercase text-gray-500 mb-2">Bill to</div>
+              <div className="font-semibold text-sm">{invoice?.customerName || customer?.displayName || customer?.name || '-'}</div>
+              {printOn('customerAddress') && customerAddress ? <div className="mt-1 text-gray-600">{customerAddress}</div> : null}
+              {printOn('customerGstin') && invoice?.customerGstin ? <div className="mt-1">GSTIN: {invoice.customerGstin}</div> : null}
+              {printOn('customerPan') && (invoice?.customerPan || customer?.pan) ? <div>PAN: {invoice?.customerPan || customer?.pan}</div> : null}
+              {printOn('placeOfSupply') ? <div>Place of supply: {invoice?.placeOfSupplyState || '—'}</div> : null}
+            </div>
+            {printOn('consignee') && shipText ? (
+              <div className="rounded-lg border p-3 text-xs">
+                <div className="font-bold uppercase text-gray-500 mb-2">Ship to / consignee</div>
+                <div className="font-semibold text-sm">{ship?.label || invoice?.customerName || '-'}</div>
+                <div className="mt-1 text-gray-600">{shipText || customerAddress || 'Same as billing address'}</div>
+              </div>
+            ) : null}
+          </section>
+
+          <div className="rounded-lg border overflow-hidden">
+            <table className="w-full table-fixed border-collapse">
+              <colgroup>
+                {printOn('serialNumber') ? <col className="w-[4%]" /> : null}
+                <col />
+                {hasBatchDetails ? <col className="w-[13%]" /> : null}
+                {printOn('hsnSac') ? <col className="w-[8%]" /> : null}
+                {printOn('quantity') ? <col className="w-[6%]" /> : null}
+                {printOn('rate') ? <col className="w-[9%]" /> : null}
+                {hasPartNumbers ? <col className="w-[9%]" /> : null}
+                {printOn('gstRate') ? <col className="w-[6%]" /> : null}
+                {printOn('taxAmount') ? <col className="w-[9%]" /> : null}
+                <col className="w-[11%]" />
+              </colgroup>
+              <thead className={accent.barClass}>
+                <tr>
+                  {printOn('serialNumber') ? <th className={`${headerCell} text-center`}>#</th> : null}
+                  <th className={`${headerCell} text-left`}>Item details</th>
+                  {hasBatchDetails ? <th className={`${headerCell} text-left`}>Batch / dates</th> : null}
+                  {printOn('hsnSac') ? <th className={`${headerCell} text-center`}>HSN/SAC</th> : null}
+                  {printOn('quantity') ? <th className={`${headerCell} text-right`}>Qty</th> : null}
+                  {printOn('rate') ? <th className={`${headerCell} text-right`}>Rate</th> : null}
+                  {hasPartNumbers ? <th className={`${headerCell} text-left`}>Part no.</th> : null}
+                  {printOn('gstRate') ? <th className={`${headerCell} text-right`}>GST %</th> : null}
+                  {printOn('taxAmount') ? <th className={`${headerCell} text-right`}>Tax</th> : null}
+                  <th className={`${headerCell} text-right`}>Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {lines.map((line, index) => {
+                  const item = line?.itemId ? itemsById.get(String(line.itemId)) : null;
+                  const tax = Number(line?.gstAmount ?? (Number(line?.cgstAmount || 0) + Number(line?.sgstAmount || 0) + Number(line?.igstAmount || 0)));
+                  return (
+                    <tr key={index} className={printOn('stripeView') && index % 2 ? 'bg-slate-50' : ''}>
+                      {printOn('serialNumber') ? <td className={`${valueCell} text-center`}>{index + 1}</td> : null}
+                      <td className={valueCell}><div className="font-medium">{itemLabel(item, line) || '-'}</div>{printOn('itemDescription') && line?.description ? <div className="text-[10px] text-gray-500">{line.description}</div> : null}</td>
+                      {hasBatchDetails ? <td className={valueCell}>{batchNote(line) || ''}</td> : null}
+                      {printOn('hsnSac') ? <td className={`${valueCell} text-center`}>{line?.hsnSac || item?.hsnSac || '—'}</td> : null}
+                      {printOn('quantity') ? <td className={`${valueCell} text-right whitespace-nowrap`}>{wholeNumber(line?.quantity)}</td> : null}
+                      {printOn('rate') ? <td className={`${valueCell} text-right whitespace-nowrap`}>{wholeMoney(line?.rate)}</td> : null}
+                      {hasPartNumbers ? <td className={valueCell}>{line?.partNumber || item?.partNumber || ''}</td> : null}
+                      {printOn('gstRate') ? <td className={`${valueCell} text-right whitespace-nowrap`}>{wholeNumber(line?.gstRate)}</td> : null}
+                      {printOn('taxAmount') ? <td className={`${valueCell} text-right whitespace-nowrap`}>{wholeMoney(tax)}</td> : null}
+                      <td className={`${valueCell} text-right font-semibold whitespace-nowrap`}>{wholeMoney(line?.lineTotal ?? line?.amount)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <section className="grid grid-cols-[1fr_19rem] gap-6 items-start">
+            <div className="space-y-3">
+              {printOn('hsnSummary') && taxRows.length ? (
+                <div className="rounded-lg border overflow-hidden text-[10px]">
+                  <div className="bg-slate-100 px-3 py-1.5 font-bold">HSN / GST summary</div>
+                  <table className="w-full table-fixed"><thead><tr className="text-gray-500"><th className="p-1 text-left">HSN/SAC</th><th className="p-1 text-right">Taxable</th><th className="p-1 text-right">Rate</th><th className="p-1 text-right">CGST</th><th className="p-1 text-right">SGST</th><th className="p-1 text-right">IGST</th></tr></thead><tbody>{taxRows.map((row) => <tr key={row.hsn}><td className="p-1">{row.hsn}</td><td className="p-1 text-right">{wholeMoney(row.taxable)}</td><td className="p-1 text-right">{wholeNumber(row.rate)}</td><td className="p-1 text-right">{wholeMoney(row.cgst)}</td><td className="p-1 text-right">{wholeMoney(row.sgst)}</td><td className="p-1 text-right">{wholeMoney(row.igst)}</td></tr>)}</tbody></table>
+                </div>
+              ) : null}
+              {paymentBlock()}
+              {invoice?.irn && printOn('itemTaxDetails') ? <div className="rounded-lg border p-3 text-[10px]"><b>e-Invoice:</b> IRN {invoice.irn}</div> : null}
+            </div>
+            <div className="rounded-lg border p-3 text-xs space-y-1">
+              <div className="flex justify-between"><span>Taxable value</span><b>{wholeMoney(invoice?.subtotal)}</b></div>
+              {printOn('taxSummary') ? <><div className="flex justify-between"><span>CGST</span><span>{wholeMoney(invoice?.cgstTotal)}</span></div><div className="flex justify-between"><span>SGST</span><span>{wholeMoney(invoice?.sgstTotal)}</span></div><div className="flex justify-between"><span>IGST</span><span>{wholeMoney(invoice?.igstTotal)}</span></div></> : null}
+              <div className="flex justify-between border-t pt-2 mt-2 text-sm"><b>Grand total</b><b>{wholeMoney(invoice?.total)}</b></div>
+              {printOn('amountInWords') ? <div className="border-t pt-2 mt-2 text-[10px] text-gray-600">{amountInWordsInr(Number(invoice?.total || 0))}</div> : null}
+            </div>
+          </section>
+
+          <section className="grid grid-cols-2 gap-4 border-t pt-3 text-xs">
+            {printOn('terms') && docSettings?.templates?.invoice?.termsText ? <div><div className="font-bold mb-1">Terms and conditions</div><div className="whitespace-pre-line text-gray-600">{docSettings.templates.invoice.termsText}</div></div> : <div />}
+            <div>
+              {printOn('declaration') && printSettings.declarationText ? <><div className="font-bold mb-1">Declaration</div><div className="text-gray-600">{printSettings.declarationText}</div></> : null}
+              {printOn('jurisdiction') && printSettings.jurisdictionText ? <div className="mt-3 text-gray-600">{printSettings.jurisdictionText}</div> : null}
+              {printOn('signature') ? <div className="mt-8 text-right font-semibold">For {company?.name || 'Company'}<div className="mt-8 text-[10px] font-normal">Authorised signatory</div></div> : null}
+            </div>
+          </section>
+          {printOn('footerNote') && printSettings.footerText ? <div className="border-t pt-2 text-center text-[10px] text-gray-500">{printSettings.footerText}</div> : null}
+        </div>
       </div>
     );
   }
@@ -477,18 +684,21 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
     const placeDisplay = place ? `${place}${placeCode ? ` (${placeCode})` : ''}` : '';
 
     return (
-      <div className="printable max-w-[980px] mx-auto text-sm text-gray-900">
+      <div className="printable max-w-[980px] mx-auto text-sm text-gray-900" data-invoice-preview>
         <div className="border rounded-lg overflow-hidden bg-white">
           <div className={`h-2 ${accent.barClass}`} />
           <div className="p-6 space-y-6">
             <div className="flex items-start justify-between gap-6">
-              <div>
-                <div className="text-2xl font-extrabold">{company?.name || 'Company'}</div>
-                {companyAddress ? <div className="text-xs text-gray-600">{companyAddress}</div> : null}
-                {company?.gstin ? <div className="text-xs text-gray-600">GSTIN: {company.gstin}</div> : null}
+              <div className="flex items-start gap-4 min-w-0">
+                {companyLogo()}
+                <div className="min-w-0">
+                  <div className="text-2xl font-extrabold">{company?.name || 'Company'}</div>
+                  {companyAddress ? <div className="text-xs text-gray-600">{companyAddress}</div> : null}
+                  {printOn('companyGstin') && company?.gstin ? <div className="text-xs text-gray-600">GSTIN: {company.gstin}</div> : null}
+                </div>
               </div>
               <div className="text-right">
-                <div className="text-3xl font-extrabold tracking-wide">TAX INVOICE</div>
+                <div className="text-3xl font-extrabold tracking-wide">{printSettings.title}</div>
                 <div className="mt-2 text-xs text-gray-600">Invoice No: {invoice?.number || '-'}</div>
                 <div className="text-xs text-gray-600">Date: {invoice?.date || '-'}</div>
                 {invoice?.dueDate ? <div className="text-xs text-gray-600">Due: {invoice.dueDate}</div> : null}
@@ -554,7 +764,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
                   ) : (
                     lines.map((l, idx) => {
                       const item = l?.itemId ? itemsById.get(String(l.itemId)) : null;
-                      const name = String(item?.name || l?.name || l?.description || '').trim();
+                      const name = itemLabel(item, l);
                       const hsn = String(l?.hsnSac || item?.hsnSac || '').trim();
                       const qty = Number(l?.quantity ?? 0);
                       const unit = String(item?.unit || '').trim();
@@ -573,7 +783,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
                       return (
                         <tr key={idx}>
                           <td className="px-3 py-2">{idx + 1}</td>
-                          <td className="px-3 py-2">{name || '-'}{batchNote(l) ? <div className="text-[10px] text-gray-500">{batchNote(l)}</div> : null}</td>
+                          <td className="px-3 py-2">{name || '-'}{printOn('batchDetails') && batchNote(l) ? <div className="text-[10px] text-gray-500">{batchNote(l)}</div> : null}</td>
                           <td className="px-3 py-2">{hsn || '-'}</td>
                           <td className="px-3 py-2 text-right">{Number.isFinite(qty) ? `${qty}${unit ? ` ${unit}` : ''}` : '-'}</td>
                           <td className="px-3 py-2 text-right">{formatMoney(Number.isFinite(rate) ? rate : 0, currentCompany)}</td>
@@ -589,7 +799,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
               </table>
             </div>
 
-            {prefOn('amountInWords') ? (
+            {printOn('amountInWords') && prefOn('amountInWords') ? (
               <div className="text-xs text-gray-700">{amountInWordsInr(Number(invoice?.total ?? 0))}</div>
             ) : null}
 
@@ -599,7 +809,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
               <div className="border rounded-lg p-4">
                 <div className="text-xs font-semibold text-gray-700 uppercase">Terms</div>
                 <div className="text-xs text-gray-600 mt-2 whitespace-pre-line">
-                  {prefOn('terms') && String(docSettings?.templates?.invoice?.termsText || '').trim()
+                  {printOn('terms') && prefOn('terms') && String(docSettings?.templates?.invoice?.termsText || '').trim()
                     ? docSettings.templates.invoice.termsText
                     : 'This is a computer generated invoice. Signature not required.'}
                 </div>
@@ -632,18 +842,21 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
     const safeNum = (n) => (Number.isFinite(Number(n)) ? Number(n) : 0);
 
     return (
-      <div className="printable max-w-[980px] mx-auto text-sm text-gray-900">
+      <div className="printable max-w-[980px] mx-auto text-sm text-gray-900" data-invoice-preview>
         <div className="border-2 border-gray-900 bg-white">
           <div className={`h-2 ${accent.barClass}`} />
           <div className="p-6 border-b-2 border-gray-900">
             <div className="flex items-start justify-between gap-6">
-              <div>
-                <div className="text-2xl font-extrabold">{company?.name || 'Company'}</div>
-                {companyAddress ? <div className="text-xs text-gray-600">{companyAddress}</div> : null}
-                {company?.gstin ? <div className="text-xs text-gray-600">GSTIN: {company.gstin}</div> : null}
+              <div className="flex items-start gap-4 min-w-0">
+                {companyLogo()}
+                <div className="min-w-0">
+                  <div className="text-2xl font-extrabold">{company?.name || 'Company'}</div>
+                  {companyAddress ? <div className="text-xs text-gray-600">{companyAddress}</div> : null}
+                  {printOn('companyGstin') && company?.gstin ? <div className="text-xs text-gray-600">GSTIN: {company.gstin}</div> : null}
+                </div>
               </div>
               <div className="text-right">
-                <div className="text-3xl font-extrabold tracking-wide">TAX INVOICE</div>
+                <div className="text-3xl font-extrabold tracking-wide">{printSettings.title}</div>
                 <div className="mt-2 text-xs text-gray-600">Invoice No: {invoice?.number || '-'}</div>
                 <div className="text-xs text-gray-600">Date: {invoice?.date || '-'}</div>
               </div>
@@ -715,7 +928,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
                   ) : (
                     lines.map((l, idx) => {
                       const item = l?.itemId ? itemsById.get(String(l.itemId)) : null;
-                      const name = String(item?.name || l?.name || l?.description || '').trim();
+                      const name = itemLabel(item, l);
                       const hsn = String(l?.hsnSac || item?.hsnSac || '').trim();
                       const qty = safeNum(l?.quantity);
                       const unit = String(item?.unit || '').trim();
@@ -730,7 +943,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
                       return (
                         <tr key={idx}>
                           <td className="px-2 py-2 border-r-2 border-gray-900">{idx + 1}</td>
-                          <td className="px-2 py-2 border-r-2 border-gray-900">{name || '-'}{batchNote(l) ? <div className="text-[10px] text-gray-600">{batchNote(l)}</div> : null}</td>
+                          <td className="px-2 py-2 border-r-2 border-gray-900">{name || '-'}{printOn('batchDetails') && batchNote(l) ? <div className="text-[10px] text-gray-600">{batchNote(l)}</div> : null}</td>
                           <td className="px-2 py-2 border-r-2 border-gray-900">{hsn || '-'}</td>
                           <td className="px-2 py-2 text-right border-r-2 border-gray-900">{Number.isFinite(qty) ? `${qty}${unit ? ` ${unit}` : ''}` : '-'}</td>
                           <td className="px-2 py-2 text-right border-r-2 border-gray-900">{formatMoney(rate, currentCompany)}</td>
@@ -753,7 +966,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
               </table>
             </div>
 
-            {prefOn('amountInWords') ? (
+            {printOn('amountInWords') && prefOn('amountInWords') ? (
               <div className="text-xs mt-4">{amountInWordsInr(Number(invoice?.total ?? 0))}</div>
             ) : null}
 
@@ -763,7 +976,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
               <div className="border-2 border-gray-900 p-4">
                 <div className="text-xs font-semibold uppercase">Terms</div>
                 <div className="text-xs text-gray-600 mt-2 whitespace-pre-line">
-                  {prefOn('terms') && String(docSettings?.templates?.invoice?.termsText || '').trim()
+                  {printOn('terms') && prefOn('terms') && String(docSettings?.templates?.invoice?.termsText || '').trim()
                     ? docSettings.templates.invoice.termsText
                     : 'Subject to jurisdiction.'}
                 </div>
@@ -792,17 +1005,20 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
     const placeDisplay = place ? `${place}${placeCode ? ` (${placeCode})` : ''}` : '';
 
     return (
-      <div className="printable max-w-[980px] mx-auto text-sm text-gray-900">
+      <div className="printable max-w-[980px] mx-auto text-sm text-gray-900" data-invoice-preview>
         <div className="bg-white border rounded-lg overflow-hidden">
           <div className={`p-6 ${accent.barClass} text-white`}>
             <div className="flex items-start justify-between gap-6">
-              <div>
-                <div className="text-2xl font-extrabold">{company?.name || 'Company'}</div>
-                {companyAddress ? <div className="text-xs opacity-95">{companyAddress}</div> : null}
-                {company?.gstin ? <div className="text-xs opacity-95">GSTIN: {company.gstin}</div> : null}
+              <div className="flex items-start gap-4 min-w-0">
+                {companyLogo()}
+                <div className="min-w-0">
+                  <div className="text-2xl font-extrabold">{company?.name || 'Company'}</div>
+                  {companyAddress ? <div className="text-xs opacity-95">{companyAddress}</div> : null}
+                  {printOn('companyGstin') && company?.gstin ? <div className="text-xs opacity-95">GSTIN: {company.gstin}</div> : null}
+                </div>
               </div>
               <div className="text-right">
-                <div className="text-3xl font-extrabold tracking-wide">TAX INVOICE</div>
+                <div className="text-3xl font-extrabold tracking-wide">{printSettings.title}</div>
                 <div className="mt-2 text-xs opacity-95">Invoice No: {invoice?.number || '-'}</div>
                 <div className="text-xs opacity-95">Date: {invoice?.date || '-'}</div>
               </div>
@@ -863,7 +1079,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
                   ) : (
                     lines.map((l, idx) => {
                       const item = l?.itemId ? itemsById.get(String(l.itemId)) : null;
-                      const name = String(item?.name || l?.name || l?.description || '').trim();
+                      const name = itemLabel(item, l);
                       const qty = Number(l?.quantity ?? 0);
                       const unit = String(item?.unit || '').trim();
                       const taxable = Number(l?.taxableAmount ?? l?.amount ?? 0);
@@ -880,7 +1096,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
                       return (
                         <tr key={idx}>
                           <td className="px-3 py-2">{idx + 1}</td>
-                          <td className="px-3 py-2">{name || '-'}{batchNote(l) ? <div className="text-[10px] text-gray-500">{batchNote(l)}</div> : null}</td>
+                          <td className="px-3 py-2">{name || '-'}{printOn('batchDetails') && batchNote(l) ? <div className="text-[10px] text-gray-500">{batchNote(l)}</div> : null}</td>
                           <td className="px-3 py-2 text-right">{Number.isFinite(qty) ? `${qty}${unit ? ` ${unit}` : ''}` : '-'}</td>
                           <td className="px-3 py-2 text-right">{formatMoney(Number.isFinite(taxable) ? taxable : 0, currentCompany)}</td>
                           <td className="px-3 py-2 text-right">{Number.isFinite(gstRate) ? gstRate : 0}</td>
@@ -893,7 +1109,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
               </table>
             </div>
 
-            {prefOn('amountInWords') ? (
+            {printOn('amountInWords') && prefOn('amountInWords') ? (
               <div className="text-xs text-gray-700">{amountInWordsInr(Number(invoice?.total ?? 0))}</div>
             ) : null}
 
@@ -903,7 +1119,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
               <div className="border rounded-lg p-4">
                 <div className="text-xs font-semibold text-gray-700 uppercase">Notes</div>
                 <div className="text-xs text-gray-600 mt-2" style={{ whiteSpace: 'pre-wrap' }}>
-                  {prefOn('terms') && String(docSettings?.templates?.invoice?.termsText || '').trim()
+                  {printOn('terms') && prefOn('terms') && String(docSettings?.templates?.invoice?.termsText || '').trim()
                     ? docSettings.templates.invoice.termsText
                     : 'This is a computer generated invoice. Signature not required.'}
                 </div>
@@ -942,20 +1158,21 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
     const pCell = isCompact ? 'p-2' : 'p-3';
 
     return (
-      <div className={`max-w-[720px] mx-auto text-gray-900 ${outerClass}`}>
+      <div className={`printable max-w-[720px] mx-auto text-gray-900 ${outerClass}`} data-invoice-preview>
         <div className={`${borderClass} bg-white`}>
           <div className={`${pHead} ${isBoxed ? 'border-b-2 border-gray-900' : 'border-b border-gray-900'}`}>
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-base font-bold">{company?.name || 'Company'}</div>
-                {companyAddress ? <div className="text-[10px] text-gray-700">{companyAddress}</div> : null}
-                {company?.gstin ? <div className="text-[10px] text-gray-700">GSTIN : {company.gstin}</div> : null}
+              <div className="flex items-start gap-2 min-w-0">
+                {companyLogo('h-10 w-10')}
+                <div className="min-w-0">
+                  <div className="text-base font-bold">{company?.name || 'Company'}</div>
+                  {printOn('companyAddress') && companyAddress ? <div className="text-[10px] text-gray-700">{companyAddress}</div> : null}
+                  {printOn('companyGstin') && company?.gstin ? <div className="text-[10px] text-gray-700">GSTIN : {company.gstin}</div> : null}
+                </div>
               </div>
               <div className="text-right">
-                <div className="text-lg font-extrabold tracking-wide">TAX INVOICE</div>
-                <div className="text-[10px] font-semibold">
-                  {variant === 'a5Compact' ? 'A5 COMPACT' : variant === 'a5Clean' ? 'A5 CLEAN' : variant === 'a5Boxed' ? 'A5 BOXED' : 'ORIGINAL FOR RECIPIENT'}
-                </div>
+                <div className="text-lg font-extrabold tracking-wide">{printSettings.title}</div>
+                <div className="text-[10px] font-semibold">{printSettings.subtitle || 'ORIGINAL FOR RECIPIENT'}</div>
               </div>
             </div>
           </div>
@@ -964,12 +1181,12 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
             <div className={`${pCell} ${isBoxed ? 'border-r-2 border-gray-900' : 'border-r border-gray-900'}`}>
               <div className="font-semibold">M/S</div>
               <div className="font-semibold">{invoice?.customerName || customer?.displayName || customer?.name || '-'}</div>
-              {customerAddress ? <div className="text-[10px] text-gray-700">{customerAddress}</div> : null}
-              {invoice?.customerGstin ? <div className="text-[10px] text-gray-700">GSTIN : {invoice.customerGstin}</div> : null}
+              {printOn('customerAddress') && customerAddress ? <div className="text-[10px] text-gray-700">{customerAddress}</div> : null}
+              {printOn('customerGstin') && invoice?.customerGstin ? <div className="text-[10px] text-gray-700">GSTIN : {invoice.customerGstin}</div> : null}
               {placeDisplay ? <div className="text-[10px] text-gray-700">Place of Supply : {placeDisplay}</div> : null}
             </div>
 
-            {!isCompact && (
+            {!isCompact && printOn('documentReferences') && (
               <div className={`${pCell} ${isBoxed ? 'border-r-2 border-gray-900' : 'border-r border-gray-900'}`}>
                 <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
                   <div className="font-semibold">Invoice No.</div>
@@ -1008,14 +1225,14 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
             <table className="w-full border-collapse">
               <thead>
                 <tr className={isBoxed ? 'border-b-2 border-gray-900' : 'border-b border-gray-900'}>
-                  <th className="p-1 border-r border-gray-900 w-[6%]">Sr.</th>
+                  {printOn('serialNumber') ? <th className="p-1 border-r border-gray-900 w-[6%]">Sr.</th> : null}
                   <th className="p-1 border-r border-gray-900">Name of Product / Service</th>
-                  {!isCompact && <th className="p-1 border-r border-gray-900 w-[12%]">HSN/SAC</th>}
-                  <th className="p-1 border-r border-gray-900 w-[10%]">Qty</th>
-                  {!isCompact && <th className="p-1 border-r border-gray-900 w-[12%]">Rate</th>}
+                  {!isCompact && printOn('hsnSac') ? <th className="p-1 border-r border-gray-900 w-[12%]">HSN/SAC</th> : null}
+                  {printOn('quantity') ? <th className="p-1 border-r border-gray-900 w-[10%]">Qty</th> : null}
+                  {!isCompact && printOn('rate') ? <th className="p-1 border-r border-gray-900 w-[12%]">Rate</th> : null}
                   <th className="p-1 border-r border-gray-900 w-[14%]">Taxable</th>
-                  <th className="p-1 border-r border-gray-900 w-[10%]">GST %</th>
-                  {!isCompact && <th className="p-1 border-r border-gray-900 w-[12%]">GST Amt</th>}
+                  {printOn('gstRate') ? <th className="p-1 border-r border-gray-900 w-[10%]">GST %</th> : null}
+                  {!isCompact && printOn('taxAmount') ? <th className="p-1 border-r border-gray-900 w-[12%]">GST Amt</th> : null}
                   <th className="p-1 w-[14%]">Total</th>
                 </tr>
               </thead>
@@ -1029,7 +1246,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
                 ) : (
                   lines.map((l, idx) => {
                     const item = l?.itemId ? itemsById.get(String(l.itemId)) : null;
-                    const name = String(item?.name || l?.name || l?.description || '').trim();
+                    const name = itemLabel(item, l);
                     const hsn = String(l?.hsnSac || item?.hsnSac || '').trim();
                     const qty = Number(l?.quantity ?? 0);
                     const unit = String(item?.unit || '').trim();
@@ -1045,14 +1262,14 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
 
                     return (
                       <tr key={idx} className="border-b border-gray-200 last:border-b-0">
-                        <td className="p-1 border-r border-gray-900 text-center">{idx + 1}</td>
-                        <td className="p-1 border-r border-gray-900">{name || '-'}{batchNote(l) ? <div className="text-[9px] text-gray-600">{batchNote(l)}</div> : null}</td>
-                        {!isCompact && <td className="p-1 border-r border-gray-900 text-center">{hsn || '-'}</td>}
-                        <td className="p-1 border-r border-gray-900 text-center">{Number.isFinite(qty) ? `${qty}${unit ? ` ${unit}` : ''}` : '-'}</td>
-                        {!isCompact && <td className="p-1 border-r border-gray-900 text-right">{formatMoney(Number.isFinite(rate) ? rate : 0, currentCompany)}</td>}
+                        {printOn('serialNumber') ? <td className="p-1 border-r border-gray-900 text-center">{idx + 1}</td> : null}
+                        <td className="p-1 border-r border-gray-900">{name || '-'}{printOn('batchDetails') && batchNote(l) ? <div className="text-[9px] text-gray-600">{batchNote(l)}</div> : null}</td>
+                        {!isCompact && printOn('hsnSac') ? <td className="p-1 border-r border-gray-900 text-center">{hsn || '-'}</td> : null}
+                        {printOn('quantity') ? <td className="p-1 border-r border-gray-900 text-center">{Number.isFinite(qty) ? `${qty}${unit ? ` ${unit}` : ''}` : '-'}</td> : null}
+                        {!isCompact && printOn('rate') ? <td className="p-1 border-r border-gray-900 text-right">{formatMoney(Number.isFinite(rate) ? rate : 0, currentCompany)}</td> : null}
                         <td className="p-1 border-r border-gray-900 text-right">{formatMoney(Number.isFinite(taxable) ? taxable : 0, currentCompany)}</td>
-                        <td className="p-1 border-r border-gray-900 text-center">{Number.isFinite(gstRate) ? gstRate : 0}</td>
-                        {!isCompact && (
+                        {printOn('gstRate') ? <td className="p-1 border-r border-gray-900 text-center">{Number.isFinite(gstRate) ? gstRate : 0}</td> : null}
+                        {!isCompact && printOn('taxAmount') && (
                           <td className="p-1 border-r border-gray-900 text-right">{formatMoney(Number.isFinite(gstAmt) ? gstAmt : 0, currentCompany)}</td>
                         )}
                         <td className="p-1 text-right">{formatMoney(Number.isFinite(total) ? total : 0, currentCompany)}</td>
@@ -1066,7 +1283,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
 
           <div className={`grid ${isCompact ? 'grid-cols-2' : 'grid-cols-3'} ${isBoxed ? 'border-t-2 border-gray-900' : 'border-t border-gray-900'}`}>
             <div className={`${pCell} ${isCompact ? '' : 'col-span-2'} ${isBoxed ? 'border-r-2 border-gray-900' : 'border-r border-gray-900'}`}>
-              {prefOn('amountInWords') ? (
+              {printOn('amountInWords') && prefOn('amountInWords') ? (
                 <>
                   <div className="font-semibold">Total in words</div>
                   <div className="text-[10px] text-gray-700">{amountInWordsInr(Number(invoice?.total ?? 0))}</div>
@@ -1080,7 +1297,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
                 </>
               )}
 
-              <div className="mt-8 font-semibold">Customer Signature</div>
+              {printOn('signature') ? <div className="mt-8 font-semibold">Customer Signature</div> : null}
             </div>
             <div className={pCell}>
               <div className="space-y-1">
@@ -1100,7 +1317,7 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
                 {paymentBlock() ? <div className="mt-3">{paymentBlock()}</div> : null}
 
                 <div className="mt-6 text-[10px] text-gray-700">
-                  {prefOn('terms') && String(docSettings?.templates?.invoice?.termsText || '').trim()
+                  {printOn('terms') && prefOn('terms') && String(docSettings?.templates?.invoice?.termsText || '').trim()
                     ? docSettings.templates.invoice.termsText
                     : 'This is a computer generated invoice. Signature not required.'}
                 </div>
@@ -1108,19 +1325,24 @@ const InvoicePreview = ({ db, currentCompany, invoice }) => {
             </div>
           </div>
 
-          <div className="p-2 border-t border-gray-900 text-[10px] text-gray-700">
-            Thank you for shopping with us!
-          </div>
+          {printOn('footerNote') && printSettings.footerText ? (
+            <div className="p-2 border-t border-gray-900 text-[10px] text-gray-700">{printSettings.footerText}</div>
+          ) : null}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="printable space-y-3">
+    <div
+      className={`printable space-y-3 invoice-paper-${printSettings.paperSize} invoice-spacing-${printSettings.margin}`}
+      data-invoice-preview
+      data-paper-size={printSettings.paperSize}
+      data-orientation={printSettings.orientation}
+    >
       <div className="border rounded-lg overflow-hidden">
         <div className={`h-2 ${accent.barClass}`} />
-        <div className="p-4">{content}</div>
+        <div className={printSettings.margin === 'compact' ? 'p-2' : printSettings.margin === 'wide' ? 'p-8' : 'p-4'}>{content}</div>
       </div>
     </div>
   );

@@ -46,6 +46,14 @@ export const companyTdsProfile = (company) => {
     state: String(tds?.state || '').trim(),
     deductorName: String(tds?.deductorName || company?.name || '').trim(),
     deductorType: String(tds?.deductorType || '').trim(),
+    pan: String(tds?.pan || company?.pan || '').trim().toUpperCase(),
+    responsiblePersonName: String(tds?.responsiblePersonName || '').trim(),
+    responsiblePersonDesignation: String(tds?.responsiblePersonDesignation || '').trim(),
+    responsiblePersonPan: String(tds?.responsiblePersonPan || '').trim().toUpperCase(),
+    responsiblePersonEmail: String(tds?.responsiblePersonEmail || '').trim(),
+    responsiblePersonPhone: String(tds?.responsiblePersonPhone || '').trim(),
+    roundOffPreference: String(tds?.roundOffPreference || 'NEAREST_RUPEE').trim().toUpperCase(),
+    thresholdHandling: String(tds?.thresholdHandling || 'STATUTORY').trim().toUpperCase(),
     defaultNatureCode: String(tds?.defaultNatureCode || '').trim().toUpperCase(),
     defaultPayableLedgerId: String(tds?.defaultPayableLedgerId || '').trim(),
     defaultReceivableLedgerId: String(tds?.defaultReceivableLedgerId || '').trim(),
@@ -114,6 +122,7 @@ export const resolveTds = ({
   transactionDate,
   taxableBase = 0,
   explicitNatureCode = '',
+  explicitLedgerId = '',
   explicitRate = null,
   side = 'PAYABLE',
   priorBase = 0,
@@ -170,7 +179,10 @@ export const resolveTds = ({
   }
 
   const base = Math.max(0, r2(taxableBase));
-  const threshold = tdsThresholdState(rule.sectionCode, base, Math.max(0, Number(priorBase) || 0));
+  const statutoryThreshold = tdsThresholdState(rule.sectionCode, base, Math.max(0, Number(priorBase) || 0));
+  const threshold = profile.thresholdHandling === 'ALWAYS_DEDUCT'
+    ? { crossed: base > 0, base, reason: 'Company setting: deduct without applying the statutory threshold.' }
+    : statutoryThreshold;
 
   /* Rate: a certificate first, then no PAN, then the rule. */
   const certRate = certificateRate(partyProfile.certificate, transactionDate);
@@ -204,19 +216,21 @@ export const resolveTds = ({
     };
   }
 
-  const tdsAmount = threshold?.crossed ? r2(tdsAmountOn(threshold.base, rate)) : 0;
+  const calculatedTds = threshold?.crossed ? r2(tdsAmountOn(threshold.base, rate)) : 0;
+  const tdsAmount = profile.roundOffPreference === 'TWO_DECIMALS' ? calculatedTds : Math.round(calculatedTds);
 
   /* Which ledger it lands in: the party's own mapping if it still fits the
      nature and side, else the single mapped ledger, else nothing — and nothing
      is a block, because a deduction with no destination cannot post. */
   const eligible = tdsLedgersFor(ledgers, { natureCode, side });
+  const explicitlySelected = eligible.find((l) => String(l.id) === String(explicitLedgerId || ''));
   const preferred = eligible.find((l) => String(l.id) === partyProfile.defaultLedgerId);
   /* Party's own mapping first, then the company default from Configuration →
      Taxation → TDS, then the lone eligible ledger — configuration beats
      coincidence, and a wrong-nature default is simply not eligible. */
   const companyDefaultId = side === 'RECEIVABLE' ? profile.defaultReceivableLedgerId : profile.defaultPayableLedgerId;
   const companyDefault = eligible.find((l) => String(l.id) === companyDefaultId);
-  const ledger = preferred || companyDefault || (eligible.length === 1 ? eligible[0] : null);
+  const ledger = explicitlySelected || preferred || companyDefault || (eligible.length === 1 ? eligible[0] : null);
   if (!eligible.length) {
     warnings.push({
       severity: BLOCK,

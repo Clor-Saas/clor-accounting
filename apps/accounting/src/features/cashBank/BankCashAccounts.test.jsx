@@ -30,10 +30,14 @@ const db = {
   chartOfAccounts: [
     {
       id: 11, companyId: 1, name: 'HDFC Bank - Current A/c', groupId: 3, openingBalance: 845230, openingBalanceType: 'Dr',
-      bankDetails: { bankName: 'HDFC Bank', accountNumber: '5020 0012 3456', branch: 'Bengaluru' },
+      bankDetails: { bankName: 'HDFC Bank', accountNumber: '5020 0012 3456', branch: 'Bengaluru', accountType: 'Current Account' },
     },
     { id: 12, companyId: 1, name: 'Petty Cash', groupId: 2, openingBalance: 7850, openingBalanceType: 'Dr' },
     { id: 13, companyId: 1, name: 'Old Union Bank', groupId: 1, openingBalance: 0, isActive: false },
+    {
+      id: 15, companyId: 1, name: 'SBI Cash Credit', groupId: 1, openingBalance: 125000, openingBalanceType: 'Cr',
+      bankDetails: { bankName: 'State Bank of India', accountType: 'Cash Credit' },
+    },
     /* Not a place money sits — it must not appear here at all. */
     { id: 14, companyId: 1, name: 'ABC Traders', groupId: 4, openingBalance: 50000 },
   ],
@@ -46,6 +50,7 @@ describe('the accounts this module is about', () => {
       'HDFC Bank - Current A/c',
       'Old Union Bank',
       'Petty Cash',
+      'SBI Cash Credit',
     ]);
   });
 
@@ -54,6 +59,7 @@ describe('the accounts this module is about', () => {
     const byName = new Map(cashBankAccounts(db, 1).map((a) => [a.name, a]));
     expect(byName.get('HDFC Bank - Current A/c').type).toBe('Bank');
     expect(byName.get('Petty Cash').type).toBe('Cash');
+    expect(byName.get('SBI Cash Credit').type).toBe('OD / Cash Credit');
   });
 
   it('takes the balance from the ledger rather than keeping its own', () => {
@@ -104,13 +110,16 @@ describe('the screen', () => {
     view();
     /* One card each, and the closed account counts in neither total. */
     const bankCard = screen.getByText('Bank balance').closest('div').parentElement;
-    expect(within(bankCard).getByText(/8,45,230\.00/)).toBeInTheDocument();
+    expect(within(bankCard).getByText(/9,70,230\.00/)).toBeInTheDocument();
     const cashCard = screen.getByText('Cash balance').closest('div').parentElement;
     expect(within(cashCard).getByText(/7,850\.00/)).toBeInTheDocument();
     const totalCard = screen.getByText('Accounts').closest('div').parentElement;
-    expect(within(totalCard).getByText('3')).toBeInTheDocument();
+    const summaryRegion = screen.getByRole('region', { name: 'Summary' });
+    const odCard = within(summaryRegion).getByText('OD / Cash Credit').closest('div').parentElement;
+    expect(within(odCard).getByText(/1,25,000\.00/)).toBeInTheDocument();
+    expect(within(totalCard).getByText('4')).toBeInTheDocument();
     const activeCard = screen.getByText('Active accounts').closest('div').parentElement;
-    expect(within(activeCard).getByText('2')).toBeInTheDocument();
+    expect(within(activeCard).getByText('3')).toBeInTheDocument();
   });
 
   it('keeps a closed account out of the live list and under Inactive', async () => {
@@ -118,17 +127,22 @@ describe('the screen', () => {
     view();
     expect(screen.queryByText('Old Union Bank')).toBeNull();
 
-    await user.click(screen.getByRole('tab', { name: /Inactive/ }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Accounts' }), 'inactive');
     expect(screen.getByText('Old Union Bank')).toBeInTheDocument();
     expect(screen.queryByText('Petty Cash')).toBeNull();
   });
 
-  it('splits bank from cash on the tabs', async () => {
+  it('filters bank, cash and OD / Cash Credit from the header dropdown', async () => {
     const user = userEvent.setup();
     view();
-    await user.click(screen.getByRole('tab', { name: /Cash Accounts/ }));
+    const filter = screen.getByRole('combobox', { name: 'Accounts' });
+    await user.selectOptions(filter, 'cash');
     expect(screen.getByText('Petty Cash')).toBeInTheDocument();
     expect(screen.queryByText('HDFC Bank - Current A/c')).toBeNull();
+
+    await user.selectOptions(filter, 'odcc');
+    expect(screen.getByText('SBI Cash Credit')).toBeInTheDocument();
+    expect(screen.queryByText('Petty Cash')).toBeNull();
   });
 
   it('shows the bank details the ledger already holds', () => {

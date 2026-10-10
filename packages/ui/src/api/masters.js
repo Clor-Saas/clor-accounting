@@ -14,6 +14,8 @@ const q = (search) => (search ? `?search=${encodeURIComponent(search)}` : '');
 export const listCustomers = (search) => apiFetch(`${base()}/customers${q(search)}`, opts);
 export const createCustomer = (party) =>
   apiFetch(`${base()}/customers`, { method: 'POST', body: party, ...opts });
+export const updateCustomer = (partyId, party) =>
+  apiFetch(`${base()}/customers/${encodeURIComponent(partyId)}`, { method: 'PATCH', body: party, ...opts });
 
 export const listVendors = (search) => apiFetch(`${base()}/vendors${q(search)}`, opts);
 export const createVendor = (party) => apiFetch(`${base()}/vendors`, { method: 'POST', body: party, ...opts });
@@ -64,6 +66,7 @@ export const toServerCustomer = (c) => ({
   email: c?.email || undefined,
   phone: c?.mobile || c?.phone || undefined,
   contactPerson: c?.contactPerson || undefined,
+  paymentTermName: c?.paymentTermName || undefined,
   partyGroup: c?.groupName || undefined,
   currency: c?.currency || undefined,
   priceListId: c?.priceListId || undefined,
@@ -75,6 +78,7 @@ export const toServerCustomer = (c) => ({
   paymentTermDays:
     c?.paymentTermDays === undefined || c?.paymentTermDays === null ? undefined : Number(c.paymentTermDays),
   creditLimit: c?.creditLimit === undefined || c?.creditLimit === null ? undefined : Number(c.creditLimit),
+  isActive: c?.isActive !== false,
 
   billingLine1: c?.billingAddress?.line1 || undefined,
   billingLine2: c?.billingAddress?.line2 || undefined,
@@ -112,6 +116,7 @@ export const toServerCustomer = (c) => ({
       position: p.position || undefined,
       email: p.email || undefined,
       mobile: p.mobile || undefined,
+      isPrimary: Boolean(p.isPrimary),
     })),
 });
 

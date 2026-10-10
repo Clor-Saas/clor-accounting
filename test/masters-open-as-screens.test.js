@@ -70,4 +70,11 @@ describe('master forms are screens', () => {
   it('keeps the quick create inside a document a dialog', () => {
     expect(APP).toMatch(/title: 'New Ledger'/);
   });
+
+  it('keeps master routes inside the Master Data workspace before considering report routes', () => {
+    const masterBranch = APP.indexOf('{dedicatedMasterDataMode ? (');
+    const reportBranch = APP.indexOf(': reportPageKeys.has(String(active))', masterBranch);
+    expect(masterBranch).toBeGreaterThan(-1);
+    expect(reportBranch).toBeGreaterThan(masterBranch);
+  });
 });

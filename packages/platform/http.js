@@ -129,6 +129,7 @@ export async function apiFetch(
      */
     skipAuth = false,
     isRetry = false,
+    transientRetryCount = 0,
   } = {}
 ) {
   const token = skipAuth ? '' : getToken();
@@ -154,6 +155,16 @@ export async function apiFetch(
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
+    // Reads are safe to repeat. During local startup the web server can become
+    // ready a moment before the API/SQLite connection; one brief retry avoids
+    // turning that harmless race into a persistent dashboard error banner.
+    if (method === 'GET' && transientRetryCount < 2) {
+      await new Promise((resolve) => setTimeout(resolve, transientRetryCount === 0 ? 250 : 750));
+      return apiFetch(path, {
+        method, body, headers, skipBranchHeader, skipWarehouseHeader, skipAuth, isRetry,
+        transientRetryCount: transientRetryCount + 1,
+      });
+    }
     /* What a person can act on: their connection, and the fact that the
        work is not lost. The environment variable that used to be named here
        means nothing to whoever is looking at the screen — and this string is
@@ -175,7 +186,7 @@ export async function apiFetch(
     // treating this as a sign-out.
     const refreshed = await refreshSession();
     if (refreshed) {
-      return apiFetch(path, { method, body, headers, skipBranchHeader, skipWarehouseHeader, isRetry: true });
+      return apiFetch(path, { method, body, headers, skipBranchHeader, skipWarehouseHeader, skipAuth, isRetry: true, transientRetryCount });
     }
     throw endSession(data?.error);
   }
@@ -185,6 +196,13 @@ export async function apiFetch(
   }
 
   if (!res.ok) {
+    if (method === 'GET' && transientRetryCount < 2 && [500, 502, 503, 504].includes(res.status)) {
+      await new Promise((resolve) => setTimeout(resolve, transientRetryCount === 0 ? 250 : 750));
+      return apiFetch(path, {
+        method, body, headers, skipBranchHeader, skipWarehouseHeader, skipAuth, isRetry,
+        transientRetryCount: transientRetryCount + 1,
+      });
+    }
     const err = new Error(data?.error || describeHttpFailure(res.status, text));
     err.status = res.status;
     err.data = data;

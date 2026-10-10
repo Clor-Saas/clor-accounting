@@ -7,6 +7,7 @@ import { TDS_NATURES, resolveRule, ruleReference } from '../../features/tds/rule
 import { tdsLedgersFor } from '../../features/tds/engine';
 import { DEDUCTEE_TYPES } from '@ui/utils/tds';
 import { todayIso } from '@ui/utils/dates';
+import { confirmDialog } from '@ui/components/ui/notify';
 
 /**
  * The party master, laid out once and used by both customers and vendors.
@@ -54,6 +55,7 @@ const LEFT_ROWS = {
     /* The group is the name's pair and the currency the balance's. */
     group: 'lg:col-start-2 lg:row-start-2',
     currency: 'lg:col-start-2 lg:row-start-3',
+    branch: 'lg:col-start-2 lg:row-start-4',
   },
   withoutGstin: {
     gstin: '',
@@ -62,6 +64,7 @@ const LEFT_ROWS = {
     type: 'lg:col-start-1 lg:row-start-4',
     group: 'lg:col-start-2 lg:row-start-2',
     currency: 'lg:col-start-2 lg:row-start-3',
+    branch: 'lg:col-start-2 lg:row-start-4',
   },
 };
 
@@ -83,6 +86,8 @@ export function PartyFormLayout({
   codesEnabled,
   automaticCode = '',
   priceListOptions = [],
+  branchOptions = [],
+  multiBranchEnabled = false,
   onDuplicate = null,
   gstinFetching,
   fetchFromGstin,
@@ -100,7 +105,7 @@ export function PartyFormLayout({
   const rows = formData.gstRegistration === 'Registered' ? LEFT_ROWS.withGstin : LEFT_ROWS.withoutGstin;
 
   return (
-    <div className="space-y-6">
+    <div className="party-form-layout space-y-6">
         <DocFormActions
           ownCard
           sticky
@@ -126,11 +131,6 @@ export function PartyFormLayout({
                 saveAndNewRef.current = true;
               },
             },
-            {
-              key: 'toggleActive',
-              label: formData.isActive === false ? 'Mark active' : 'Mark inactive',
-              onSelect: () => setFormData((p) => ({ ...p, isActive: !(p.isActive !== false) })),
-            },
             ...(onDuplicate
               ? [{ key: 'duplicate', label: `Duplicate this ${cfg.noun.toLowerCase()}`, onSelect: onDuplicate }]
               : []),
@@ -138,9 +138,32 @@ export function PartyFormLayout({
           ]}
         />
 
-        <section className="ui-card p-5 sm:p-6">
-          <h3 className="ui-t-sec">Basic Details</h3>
-          <p className="ui-caption mt-0.5">Enter the primary information about your {cfg.noun.toLowerCase()}.</p>
+        <section className="party-basic-card ui-card p-5 sm:p-6">
+          <h3 className="party-section-title ui-t-sec">Basic Details</h3>
+          <p className="party-section-copy ui-caption mt-0.5">Enter the primary information about your {cfg.noun.toLowerCase()}.</p>
+
+          {cfg.noun === 'Customer' && isEdit ? (
+            <FormRow className="mt-5" label="Customer Status" hint="Inactive customers keep their history but cannot be selected on new transactions.">
+              <PopupSelect
+                ariaLabel="Customer Status"
+                label={null}
+                value={formData.isActive === false ? 'inactive' : 'active'}
+                options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]}
+                onChange={async (value) => {
+                  if (value === 'inactive' && formData.isActive !== false) {
+                    const confirmed = await confirmDialog({
+                      title: 'Make this customer inactive?',
+                      message: 'You will not be able to create invoices, orders, receipts or any other new entries for this customer. Existing transactions and reports will remain available.',
+                      confirmLabel: 'Make inactive',
+                      tone: 'danger',
+                    });
+                    if (!confirmed) return;
+                  }
+                  setFormData((previous) => ({ ...previous, isActive: value === 'active' }));
+                }}
+              />
+            </FormRow>
+          ) : null}
 
           {/*
             Two columns, and they are not the same shape.
@@ -161,9 +184,9 @@ export function PartyFormLayout({
             card. Placed on shared rows, a row is as tall as the taller of its
             two cells and the sides cannot drift at all.
           */}
-          <div className="mt-5 grid gap-x-14 gap-y-4 lg:grid-cols-2">
+          <div className="party-basic-grid mt-5 grid gap-x-14 gap-y-4 lg:grid-cols-2">
 
-          <FormRow className="lg:col-start-1 lg:row-start-1" label="GST Registration Type" hint="Decides whether a GSTIN is required, and whether input credit can be claimed on what you buy from them.">
+          <FormRow className="lg:col-start-1 lg:row-start-1" label={cfg.noun === 'Customer' ? 'GST' : 'GST Registration Type'} hint="Decides whether a GSTIN is required, and whether input credit can be claimed on what you buy from them.">
             <div className="flex items-center gap-6 pt-1.5">
               {[
                 { v: 'Registered', l: 'Registered' },
@@ -189,26 +212,30 @@ export function PartyFormLayout({
                   Sharing one 256px cell with the fetch button left it 77px —
                   six characters of what you type — so the row wraps and the
                   button drops underneath when the column is that tight. */}
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={formData.gstin}
-                  onChange={(e) => setFormData((p) => ({ ...p, gstin: e.target.value.toUpperCase() }))}
-                  className="ui-input min-w-[11rem] flex-1"
-                  placeholder="Enter 15 digit GSTIN"
-                  maxLength={15}
-                  autoComplete="off"
-                />
-                <button
-                  type="button"
-                  onClick={fetchFromGstin}
-                  disabled={gstinFetching}
-                  className="ui-btn ui-btn-secondary shrink-0"
-                  style={{ borderColor: 'rgb(var(--brand))', color: 'rgb(var(--brand))' }}
-                >
-                  <Search size={14} aria-hidden="true" />
-                  {gstinFetching ? 'Fetching…' : 'Fetch from GSTIN'}
-                </button>
+              <div className="customer-gstin-controls grid gap-2">
+                <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(11rem,1fr)_auto]">
+                  <input
+                    type="text"
+                    value={formData.gstin}
+                    onChange={(e) => setFormData((p) => ({ ...p, gstin: e.target.value.toUpperCase() }))}
+                    className="ui-input min-w-0 w-full"
+                    placeholder="Enter 15 digit GSTIN"
+                    maxLength={15}
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    onClick={fetchFromGstin}
+                    disabled={gstinFetching}
+                    className="customer-gstin-fetch ui-btn ui-btn-secondary ui-btn-sm w-full shrink-0 sm:w-auto"
+                    aria-label="Fetch from GSTIN"
+                    title="Fetch details from GSTIN"
+                    style={{ borderColor: 'rgb(var(--brand))', color: 'rgb(var(--brand))' }}
+                  >
+                    <Search size={13} aria-hidden="true" />
+                    {gstinFetching ? 'Fetching…' : 'Fetch'}
+                  </button>
+                </div>
               </div>
             </FormRow>
           ) : null}
@@ -228,21 +255,33 @@ export function PartyFormLayout({
           <FormRow className={rows.opening} label="Opening Balance" htmlFor="party-opening-balance" hint={cfg.openingBalanceHint}>
             {/* The symbol sits in the field rather than in the label: a column
                 of money the eye reads as money before it reads the number. */}
-            <div className="ui-money-centred">
-              <span className="ui-money-symbol pointer-events-none">₹</span>
-              <input
-                id="party-opening-balance"
-                type="number"
-                step="0.01"
-                value={formData.openingBalance}
-                onChange={(e) => setFormData((p) => ({ ...p, openingBalance: e.target.value }))}
-                className="ui-input ui-money"
-                placeholder="0.00"
-              />
+            <div className={cfg.noun === 'Customer' ? 'customer-opening-inline flex items-center gap-3' : ''}>
+              <div className="ui-money-centred customer-opening-amount">
+                <span className="ui-money-symbol pointer-events-none">₹</span>
+                <input
+                  id="party-opening-balance"
+                  type="number"
+                  step="0.01"
+                  value={formData.openingBalance}
+                  onChange={(e) => setFormData((p) => ({ ...p, openingBalance: e.target.value }))}
+                  className="ui-input ui-money"
+                  placeholder="0.00"
+                />
+              </div>
+              {cfg.noun === 'Customer' ? (
+                <div className="flex shrink-0 items-center gap-3">
+                  {['Dr', 'Cr'].map((value) => (
+                    <label key={value} className="inline-flex cursor-pointer items-center gap-1.5 text-sm">
+                      <input type="radio" name="openingBalanceType" className="ui-radio" checked={formData.openingBalanceType === value} onChange={() => setFormData((previous) => ({ ...previous, openingBalanceType: value }))} />
+                      {value}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </FormRow>
 
-          <FormRow className={rows.type} label="Balance Type" hint={cfg.openingHint}>
+          {cfg.noun !== 'Customer' ? <FormRow className={rows.type} label="Balance Type" hint={cfg.openingHint}>
             {/* Under the balance it qualifies. On the other side of the card
                 it was three columns away from the number it describes. */}
             <div className="flex items-center gap-6 pt-1.5">
@@ -262,7 +301,7 @@ export function PartyFormLayout({
                 </label>
               ))}
             </div>
-          </FormRow>
+          </FormRow> : null}
 
             {/*
               Both halves are the same shape — a name beside its control — and
@@ -297,10 +336,44 @@ export function PartyFormLayout({
                   placeholder="Select currency"
                 />
               </FormRow>
+
+              {multiBranchEnabled && Number(formData.openingBalance || 0) !== 0 ? (
+                <FormRow
+                  className={rows.branch}
+                  label="Opening Balance Branch"
+                  htmlFor="party-opening-branch"
+                  required
+                  hint="The branch whose books carry this opening balance."
+                >
+                  <select
+                    id="party-opening-branch"
+                    aria-label="Opening Balance Branch"
+                    className="ui-select w-full"
+                    value={String(formData.openingBalanceBranchId || '')}
+                    onChange={(e) => setFormData((p) => ({ ...p, openingBalanceBranchId: e.target.value }))}
+                    required
+                  >
+                    <option value="">Select branch</option>
+                    {branchOptions.map((branch) => (
+                      <option key={branch.value} value={branch.value}>{branch.label}</option>
+                    ))}
+                  </select>
+                </FormRow>
+              ) : null}
+              {cfg.noun === 'Customer' && codesEnabled ? (
+                <FormRow
+                  className={multiBranchEnabled && Number(formData.openingBalance || 0) !== 0 ? 'lg:col-start-2 lg:row-start-5' : 'lg:col-start-2 lg:row-start-4'}
+                  label="Customer Code"
+                  htmlFor="customer-code-preview"
+                  hint="Automatically allotted in the six-digit customer series."
+                >
+                  <input id="customer-code-preview" type="text" value={automaticCode || ''} readOnly aria-label="Customer Code" aria-readonly="true" className="ui-input ui-mono customer-code-final cursor-not-allowed font-semibold" />
+                </FormRow>
+              ) : null}
           </div>
         </section>
 
-        <section className="ui-card p-5 sm:p-6">
+        <section className="party-tabs-card ui-card p-5 sm:p-6">
         <div className="ui-tabs" role="tablist" aria-label={`${cfg.noun} details`}>
           {tabs.map((t) => (
             <button
@@ -316,7 +389,7 @@ export function PartyFormLayout({
           ))}
         </div>
 
-        <div className="min-h-0 flex-1 pt-5">
+        <div className={`party-tab-body party-tab-${tab} min-h-0 flex-1 pt-5`}>
           {tab === 'address' ? (
             <AddressTab
               rows={addressRows}
@@ -326,6 +399,7 @@ export function PartyFormLayout({
               onRemove={removeAddressRow}
               sameAsBilling={sameAsBilling}
               onSameAsBilling={onSameAsBilling}
+              variant={cfg.noun === 'Customer' ? 'customer-table' : 'cards'}
             />
           ) : null}
 
@@ -345,8 +419,8 @@ export function PartyFormLayout({
           {tab === 'credit' ? (
             <section className="space-y-4">
               <div>
-                <h4 className="ui-t-sec">Credit Details</h4>
-                <p className="ui-caption mt-0.5">Set credit terms and limits for this {cfg.noun.toLowerCase()}.</p>
+                <h4 className="party-section-title ui-t-sec">Credit Details</h4>
+                <p className="party-section-copy ui-caption mt-0.5">Set credit terms and limits for this {cfg.noun.toLowerCase()}.</p>
               </div>
 
             {/*
@@ -441,8 +515,8 @@ export function PartyFormLayout({
           {tab === 'statutory' ? (
             <section className="space-y-4">
               <div>
-                <h4 className="ui-t-sec">Statutory Details</h4>
-                <p className="ui-caption mt-0.5">Tax and regulatory information for this {cfg.noun.toLowerCase()}.</p>
+                <h4 className="party-section-title ui-t-sec">Statutory Details</h4>
+                <p className="party-section-copy ui-caption mt-0.5">Tax and regulatory information for this {cfg.noun.toLowerCase()}.</p>
               </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -807,8 +881,8 @@ export function PartyFormLayout({
           {tab === 'others' ? (
             <section className="space-y-4">
               <div>
-                <h4 className="ui-t-sec">Others</h4>
-                <p className="ui-caption mt-0.5">Additional settings for this {cfg.noun.toLowerCase()}.</p>
+                <h4 className="party-section-title ui-t-sec">Others</h4>
+                <p className="party-section-copy ui-caption mt-0.5">Additional settings for this {cfg.noun.toLowerCase()}.</p>
               </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -817,7 +891,7 @@ export function PartyFormLayout({
                 for and the server allots nothing — a code nobody uses is still
                 a column somebody has to explain.
               */}
-              {codesEnabled ? (
+              {codesEnabled && cfg.noun !== 'Customer' ? (
               <div>
                 <label className="ui-label" htmlFor="cust-code">{cfg.noun} Code</label>
                 <input
@@ -832,25 +906,6 @@ export function PartyFormLayout({
                 <p className="ui-caption mt-1">Automatically allotted and cannot be edited.</p>
               </div>
               ) : null}
-              {/*
-                Active rather than delete. A party with transactions against it
-                cannot be removed without orphaning the history, so the master
-                carries a state instead — which is what both specs ask for.
-              */}
-              <div>
-                <span className="ui-label block">Status</span>
-                <label className="mt-1 inline-flex cursor-pointer items-center gap-2.5 text-sm">
-                  <input
-                    type="checkbox"
-                    className="ui-checkbox"
-                    checked={formData.isActive !== false}
-                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                  />
-                  Active
-                </label>
-                <p className="ui-caption mt-1">Inactive keeps every past transaction and stops the {cfg.noun.toLowerCase()} appearing on new documents.</p>
-              </div>
-
               {/*
                 Where a note about this party goes. Without it the only place to
                 write "pays on the 10th, never before" was the address line.

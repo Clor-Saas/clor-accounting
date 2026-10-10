@@ -29,6 +29,7 @@ const db = {
     { id: 1, companyId: 1, name: 'ABC Industries', displayName: 'ABC Industries', email: 'ap@abc.example' },
     { id: 2, companyId: 1, name: 'Acme Works', displayName: 'Acme Works' },
     { id: 3, companyId: 1, name: 'Zenith Traders', displayName: 'Zenith Traders' },
+    { id: 4, companyId: 1, name: 'Dormant Buyer', displayName: 'Dormant Buyer', isActive: false },
   ],
   accountGroups: [{ id: 1, companyId: 1, name: 'Sundry Debtors' }],
   chartOfAccounts: [],
@@ -63,6 +64,7 @@ describe('the customer field', () => {
     expect(within(list).getAllByRole('option').map((o) => o.textContent)).toEqual(
       expect.arrayContaining([expect.stringContaining('ABC Industries'), expect.stringContaining('Zenith Traders')])
     );
+    expect(within(list).queryByText(/Dormant Buyer/)).toBeNull();
   });
 
   it('narrows as the letters arrive — all of them', async () => {

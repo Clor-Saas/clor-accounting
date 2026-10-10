@@ -41,9 +41,9 @@ export const EntityMark = ({ entity, size = 18 }) => {
          Eleven category hues told the areas apart and read as grey at 18px on
          a near-white tile — the mark was doing identity work nobody could see.
          One orange on a tint of itself is legible at a glance and says
-         "this is Clor"; which area you are in is what the title beside it
+         "this is CLOR"; which area you are in is what the title beside it
          and the rail's own coloured icon already say. */
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+      className="ui-entity-mark grid h-8 w-8 shrink-0 place-items-center rounded-lg"
       style={{ backgroundColor: 'rgb(var(--brand) / 0.12)', color: 'rgb(var(--brand-ink))' }}
       aria-hidden="true"
     >
@@ -56,7 +56,7 @@ export const EntityMark = ({ entity, size = 18 }) => {
 };
 
 export const PageHeader = ({ title, description, actions = null, entity = '' }) => (
-  <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+  <div className="ui-page-heading flex flex-wrap items-start justify-between gap-3 mb-2">
     <div className="flex min-w-0 items-center gap-2.5">
       {entity ? <EntityMark entity={entity} /> : null}
       <div className="min-w-0">
@@ -156,21 +156,17 @@ export const StatStrip = ({ items = [], className = '' }) => {
   );
 };
 
-/** Status pill. Pass an explicit tone; the label carries the meaning, not the colour. */
 /**
- * A document's status, and optionally why.
+ * A document's concise status.
  *
  * Tone comes from the registry rather than from a list kept here, so a status
  * added anywhere in the product either registers itself or arrives visibly
  * unknown. It used to arrive grey, which is how eleven of twenty-one statuses
  * ended up meaning nothing — `Draft` and `Unpaid` were the same pill.
- *
- * `reason` is the answer to the question the word provokes. "Overdue" invites
- * "by how long"; "Partial" invites "how much is left". It sits outside the
- * pill so the pill stays a constant width and the reason can be dropped on a
- * narrow screen without the status losing its meaning.
+ * Status columns stay to one compact label. Amounts, dates and settlement
+ * detail belong in their own columns or in the document view.
  */
-export const StatusPill = ({ status, reason = '' }) => {
+export const StatusPill = ({ status }) => {
   const { label, tone, statusTone, known } = resolveStatus(status);
 
   /*
@@ -181,7 +177,7 @@ export const StatusPill = ({ status, reason = '' }) => {
    * pills; they are not invoice states and inventing a hue for each would
    * spend the palette on distinctions nobody makes.
    */
-  const pill = (
+  return (
     <span
       data-tone={statusTone || undefined}
       className={statusTone ? 'ui-pill ui-pill-status' : `ui-pill ui-pill-${tone}`}
@@ -189,14 +185,6 @@ export const StatusPill = ({ status, reason = '' }) => {
       style={known ? undefined : { outline: '1px dashed rgb(var(--neg))', outlineOffset: '1px' }}
     >
       {label}
-    </span>
-  );
-
-  if (!reason) return pill;
-  return (
-    <span className="inline-flex items-baseline gap-1.5">
-      {pill}
-      <span className="ui-caption">{reason}</span>
     </span>
   );
 };
@@ -434,11 +422,11 @@ export const LoadingRegion = ({ label = 'Loading', children }) => (
   </div>
 );
 
-export const ThemeToggle = ({ theme, onToggle }) => (
+export const ThemeToggle = ({ theme, onToggle, compact = false }) => (
   <button
     type="button"
     onClick={onToggle}
-    className="ui-btn ui-btn-ghost !px-2"
+    className={`ui-btn ui-btn-ghost !px-2 ${compact ? '!h-8 !min-h-8' : ''}`}
     aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
     title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
   >
@@ -492,30 +480,9 @@ export const singularise = (noun) => {
   return s.replace(/s$/i, '');
 };
 
-export const TableTotals = ({ count, totalCount, noun = 'rows', nounOne, figures = [], className = '' }) => {
-  const shown = Number(count || 0);
-  const total = Number(totalCount ?? count ?? 0);
-  const filtered = total > shown;
-
-  return (
-    <div className={`ui-table-totals ${className}`.trim()}>
-      <span className="ui-t-label">
-        {shown.toLocaleString('en-IN')} {shown === 1 ? nounOne || singularise(noun) : noun}
-        {filtered ? <span className="ui-muted"> of {total.toLocaleString('en-IN')}</span> : null}
-      </span>
-      {figures
-        .filter((f) => f && f.label)
-        .map((f) => (
-          <span key={f.label}>
-            <span className="ui-muted">{f.label}</span>{' '}
-            <span className="fig" style={f.tone ? { color: `rgb(var(--${f.tone}))` } : undefined}>
-              {f.value}
-            </span>
-          </span>
-        ))}
-    </div>
-  );
-};
+/* Totals belong in the summary cards and amount columns. A second strip below
+   the grid keeps the horizontal scrollbar away from the bottom of the page. */
+export const TableTotals = () => null;
 
 /**
  * The message that belongs under the box it is about.

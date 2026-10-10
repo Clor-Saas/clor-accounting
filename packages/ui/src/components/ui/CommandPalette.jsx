@@ -144,7 +144,7 @@ export default function CommandPalette({ onClose, items = [], onSelect, searchRe
                arrow/enter/escape rather than depending on bubbling. */
             onKeyDown={onKeyDown}
             placeholder="Search invoices, customers, reports, settings…"
-            className="w-full bg-transparent border-0 outline-none py-3.5 text-[0.9375rem]"
+            className="w-full bg-transparent border-0 outline-none py-3.5 text-sm"
             style={{ color: 'rgb(var(--fg))' }}
             role="combobox"
             aria-expanded="true"

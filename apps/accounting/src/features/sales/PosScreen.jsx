@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { ShoppingCart, Minus, Plus, SlidersHorizontal, X } from 'lucide-react';
-import { PageHeader } from '@ui/components/ui/Primitives';
+import { BarChart3, Clock3, List, RotateCcw, Settings, ShoppingCart, SlidersHorizontal, X } from 'lucide-react';
 import { notify } from '@ui/components/ui/notify';
 import { computeGstForLines } from '@ui/utils/gst';
 import { formatMoney } from '@ui/utils/money';
@@ -30,7 +29,7 @@ const TENDERS = [
   { key: 'CARD', label: 'Card' },
 ];
 const tenderLabel = (key) => TENDERS.find((t) => t.key === String(key || '').toUpperCase())?.label || 'Cash';
-export default function PosScreen({ db, setDb, currentCompany }) {
+function PosBillingScreen({ db, setDb, currentCompany }) {
   /* The POS series has no number field to hang its gear on — a sale takes its
      number the moment it is rung up — so the gear sits in the header and
      opens the same series panel every numbered form carries. */
@@ -50,6 +49,7 @@ export default function PosScreen({ db, setDb, currentCompany }) {
   const [tender, setTender] = useState('CASH');
   const [customerName, setCustomerName] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
+  const [heldBills, setHeldBills] = useState([]);
   const [busy, setBusy] = useState(false);
   /*
    * One id per checkout attempt, and the same one on the retry.
@@ -64,6 +64,8 @@ export default function PosScreen({ db, setDb, currentCompany }) {
    */
   const checkoutIdRef = useRef('');
   const [dayCloseOpen, setDayCloseOpen] = useState(false);
+  const [openingCash, setOpeningCash] = useState(0);
+  const [differenceReason, setDifferenceReason] = useState('');
   const DENOMS = [500, 200, 100, 50, 20, 10, 5, 2, 1];
   const [denomCounts, setDenomCounts] = useState({});
 
@@ -94,7 +96,8 @@ export default function PosScreen({ db, setDb, currentCompany }) {
   );
 
   const countedCash = DENOMS.reduce((s, d) => s + d * (Number(denomCounts[d]) || 0), 0);
-  const overShort = Math.round((countedCash - byTender.Cash) * 100) / 100;
+  const expectedCash = Number(openingCash || 0) + byTender.Cash;
+  const overShort = Math.round((countedCash - expectedCash) * 100) / 100;
 
   const saveDayClose = async () => {
     const nextId = (db.posDayCloses || []).reduce((m, r) => Math.max(m, Number(r.id) || 0), 0) + 1;
@@ -108,6 +111,8 @@ export default function PosScreen({ db, setDb, currentCompany }) {
       card: byTender.Card,
       total: byTender.Cash + byTender.UPI + byTender.Card,
       countedCash,
+      openingCash: Number(openingCash || 0),
+      differenceReason: differenceReason.trim(),
       overShort,
       denomCounts: { ...denomCounts },
       closedAt: new Date().toISOString(),
@@ -162,6 +167,7 @@ export default function PosScreen({ db, setDb, currentCompany }) {
     }
     setDayCloseOpen(false);
     setDenomCounts({});
+    setDifferenceReason('');
     notify.success(`Day closed — ${record.invoices} sale(s), ${overShort === 0 ? 'cash tallied' : overShort > 0 ? `over by ₹${overShort}` : `short by ₹${-overShort}`}.`);
   };
 
@@ -212,21 +218,39 @@ export default function PosScreen({ db, setDb, currentCompany }) {
     setCart((prev) => {
       const existing = prev.find((c) => c.itemId === item.id);
       if (existing) return prev.map((c) => (c.itemId === item.id ? { ...c, qty: c.qty + 1 } : c));
-      return [...prev, { itemId: item.id, name: item.name, rate: Number(item.salePrice || 0), gstRate: Number(item.gstRate || 0), qty: 1 }];
+      return [...prev, { itemId: item.id, name: item.name, rate: Number(item.salePrice || 0), gstRate: Number(item.gstRate || 0), discount: 0, qty: 1 }];
     });
-  };
-  const bump = (itemId, delta) => {
-    cartChanged();
-    setCart((prev) => prev.map((c) => (c.itemId === itemId ? { ...c, qty: Math.max(1, c.qty + delta) } : c)));
   };
   const drop = (itemId) => {
     cartChanged();
     setCart((prev) => prev.filter((c) => c.itemId !== itemId));
   };
+  const editLine = (itemId, key, value) => {
+    cartChanged();
+    setCart((prev) => prev.map((c) => c.itemId === itemId ? { ...c, [key]: Math.max(0, Number(value) || 0) } : c));
+  };
+  const holdBill = () => {
+    if (!cart.length) return notify.error('Add an item before holding the bill.');
+    setHeldBills((prev) => [...prev, { id: newCheckoutId(), cart, customerName, customerMobile, heldAt: new Date().toISOString() }]);
+    setCart([]);
+    setCustomerName('');
+    setCustomerMobile('');
+    checkoutIdRef.current = '';
+    notify.success('Bill held for recall.');
+  };
+  const recallBill = () => {
+    const held = heldBills.at(-1);
+    if (!held) return notify.error('There are no held bills.');
+    setCart(held.cart);
+    setCustomerName(held.customerName);
+    setCustomerMobile(held.customerMobile);
+    setHeldBills((prev) => prev.slice(0, -1));
+    checkoutIdRef.current = '';
+  };
 
   // Walk-in sales are intra-state by definition — the buyer is at the counter.
   const computed = computeGstForLines({
-    lines: cart.map((c) => ({ itemId: String(c.itemId), description: c.name, quantity: c.qty, rate: c.rate, gstRate: c.gstRate })),
+    lines: cart.map((c) => ({ itemId: String(c.itemId), description: c.name, quantity: c.qty, rate: c.rate, discount: c.discount, discountType: 'PERCENT', gstRate: c.gstRate })),
     isIntra: true,
   });
 
@@ -392,7 +416,7 @@ export default function PosScreen({ db, setDb, currentCompany }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <PageHeader entity="invoice" title="Point of Sale" />
+        <div><h2 className="ui-t-sec">Counter billing</h2><p className="ui-helper">Scan an item or search by name and code.</p></div>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -439,6 +463,9 @@ export default function PosScreen({ db, setDb, currentCompany }) {
           </div>
 
           <div>
+            <label className="ui-label mb-3 block max-w-xs">Opening cash
+              <input type="number" min="0" value={openingCash} onChange={(e) => setOpeningCash(e.target.value)} className="ui-input mt-1 w-full" />
+            </label>
             <div className="ui-label mb-1">Cash denomination count</div>
             <div className="flex flex-wrap gap-2">
               {DENOMS.map((d) => (
@@ -456,7 +483,7 @@ export default function PosScreen({ db, setDb, currentCompany }) {
               ))}
             </div>
             <div className="mt-2 text-sm">
-              Counted: <strong>{formatMoney(countedCash, currentCompany)}</strong> · Expected cash: <strong>{formatMoney(byTender.Cash, currentCompany)}</strong> ·{' '}
+              Counted: <strong>{formatMoney(countedCash, currentCompany)}</strong> · Expected cash: <strong>{formatMoney(expectedCash, currentCompany)}</strong> ·{' '}
               {overShort === 0 ? (
                 <span className="ui-amount-pos font-semibold">Tallied</span>
               ) : overShort > 0 ? (
@@ -467,9 +494,13 @@ export default function PosScreen({ db, setDb, currentCompany }) {
             </div>
           </div>
 
+          {overShort !== 0 ? <label className="ui-label block">Reason for difference
+            <textarea value={differenceReason} onChange={(e) => setDifferenceReason(e.target.value)} className="ui-input mt-1 min-h-16 w-full" required placeholder="Explain the cash short or excess" />
+          </label> : null}
+
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setDayCloseOpen(false)} className="ui-btn ui-btn-secondary">Cancel</button>
-            <button type="button" onClick={saveDayClose} className="ui-btn ui-btn-primary">Close day & print Z report</button>
+            <button type="button" onClick={saveDayClose} disabled={overShort !== 0 && !differenceReason.trim()} className="ui-btn ui-btn-primary">Close day & print Z report</button>
           </div>
         </div>
       ) : null}
@@ -550,15 +581,17 @@ export default function PosScreen({ db, setDb, currentCompany }) {
             {cart.length === 0 ? (
               <p className="ui-muted py-6 text-center text-sm">Tap items to add them.</p>
             ) : (
-              <div className="space-y-2">
+              <div className="overflow-x-auto">
+                <div className="grid min-w-[520px] grid-cols-[minmax(9rem,1fr)_4rem_5.5rem_4.5rem_4rem_6rem_2rem] gap-1 border-b px-1 pb-1 ui-caption"><span>Item</span><span className="text-right">Qty</span><span className="text-right">Rate</span><span className="text-right">Discount</span><span className="text-right">Tax</span><span className="text-right">Amount</span><span /></div>
                 {cart.map((c) => (
-                  <div key={c.itemId} className="flex items-center gap-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate">{c.name}</span>
-                    <button type="button" onClick={() => bump(c.itemId, -1)} className="ui-icon-btn !h-7 !w-7" aria-label="Less"><Minus size={12} /></button>
-                    <span className="w-6 text-center">{c.qty}</span>
-                    <button type="button" onClick={() => bump(c.itemId, 1)} className="ui-icon-btn !h-7 !w-7" aria-label="More"><Plus size={12} /></button>
-                    <span className="ui-col-amount w-20 text-right">{formatMoney(c.qty * c.rate, currentCompany)}</span>
-                    <button type="button" onClick={() => drop(c.itemId)} className="ui-icon-btn" aria-label="Remove"><X size={12} /></button>
+                  <div key={c.itemId} className="grid min-w-[520px] grid-cols-[minmax(9rem,1fr)_4rem_5.5rem_4.5rem_4rem_6rem_2rem] items-center gap-1 border-b py-1 text-sm" style={{ borderColor: 'rgb(var(--border))' }}>
+                    <span className="truncate" title={c.name}>{c.name}</span>
+                    <input aria-label={`${c.name} quantity`} type="number" min="1" value={c.qty} onChange={(e) => editLine(c.itemId, 'qty', Math.max(1, e.target.value))} className="ui-input !h-7 px-1 text-right" />
+                    <input aria-label={`${c.name} rate`} type="number" min="0" value={c.rate} onChange={(e) => editLine(c.itemId, 'rate', e.target.value)} className="ui-input !h-7 px-1 text-right" />
+                    <input aria-label={`${c.name} discount`} type="number" min="0" max="100" value={c.discount} onChange={(e) => editLine(c.itemId, 'discount', Math.min(100, Number(e.target.value) || 0))} className="ui-input !h-7 px-1 text-right" />
+                    <span className="text-right">{c.gstRate}%</span>
+                    <span className="ui-money text-right">{formatMoney(c.qty * c.rate * (1 - c.discount / 100), currentCompany)}</span>
+                    <button type="button" onClick={() => drop(c.itemId)} className="ui-icon-btn !h-7 !w-7" aria-label="Remove"><X size={12} /></button>
                   </div>
                 ))}
               </div>
@@ -597,6 +630,11 @@ export default function PosScreen({ db, setDb, currentCompany }) {
                   </button>
                 ))}
               </div>
+              <div className="grid grid-cols-3 gap-2">
+                <button type="button" onClick={holdBill} className="ui-btn ui-btn-secondary">Hold</button>
+                <button type="button" onClick={recallBill} className="ui-btn ui-btn-secondary">Recall {heldBills.length ? `(${heldBills.length})` : ''}</button>
+                <button type="button" onClick={() => { setCart([]); setCustomerName(''); setCustomerMobile(''); checkoutIdRef.current = ''; }} className="ui-btn ui-btn-secondary">Cancel</button>
+              </div>
               <button type="button" onClick={checkout} disabled={busy || !cart.length} className="ui-btn ui-btn-primary !h-11 w-full text-base">
                 {busy ? 'Booking…' : `Charge ${formatMoney(computed.total, currentCompany)}`}
               </button>
@@ -606,4 +644,98 @@ export default function PosScreen({ db, setDb, currentCompany }) {
       </div>
     </div>
   );
+}
+
+const POS_TABS = [
+  { key: 'billing', label: 'Billing', icon: ShoppingCart },
+  { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+  { key: 'transactions', label: 'Transactions', icon: List },
+  { key: 'returns', label: 'Returns', icon: RotateCcw },
+  { key: 'sessions', label: 'Sessions', icon: Clock3 },
+  { key: 'settings', label: 'Settings', icon: Settings },
+];
+
+const dateOf = (value) => String(value || '').slice(0, 10);
+const timeOf = (value) => {
+  const d = new Date(value || 0);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+function PosMetric({ label, value, note }) {
+  return (
+    <div className="ui-card min-w-0 px-4 py-3">
+      <div className="ui-caption">{label}</div>
+      <div className="ui-money mt-1 truncate text-lg font-semibold">{value}</div>
+      {note ? <div className="ui-helper mt-0.5">{note}</div> : null}
+    </div>
+  );
+}
+
+function PosDashboard({ db, currentCompany }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const sales = (db.invoices || []).filter((x) => x.companyId === currentCompany.id && x.posSale && dateOf(x.date) === today && String(x.status).toLowerCase() !== 'cancelled');
+  const returns = (db.creditNotes || []).filter((x) => x.companyId === currentCompany.id && (x.posReturn || x.sourceSystem === 'POS') && dateOf(x.date) === today);
+  const total = sales.reduce((n, x) => n + Number(x.total || 0), 0);
+  const cash = sales.filter((x) => String(x.tender).toUpperCase() === 'CASH').reduce((n, x) => n + Number(x.total || 0), 0);
+  const byMode = ['CASH', 'UPI', 'CARD', 'CREDIT'].map((mode) => ({ mode, amount: sales.filter((x) => String(x.tender).toUpperCase() === mode).reduce((n, x) => n + Number(x.total || 0), 0) }));
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <PosMetric label="Today's sales" value={formatMoney(total, currentCompany)} />
+        <PosMetric label="Transactions" value={sales.length} />
+        <PosMetric label="Returns" value={formatMoney(returns.reduce((n, x) => n + Number(x.total || 0), 0), currentCompany)} />
+        <PosMetric label="Average bill value" value={formatMoney(sales.length ? total / sales.length : 0, currentCompany)} />
+        <PosMetric label="Cash collected" value={formatMoney(cash, currentCompany)} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="ui-card p-4"><h2 className="ui-t-sec mb-3">Sales by payment mode</h2>{byMode.map((x) => <div key={x.mode} className="flex justify-between border-b py-2 last:border-0" style={{ borderColor: 'rgb(var(--border))' }}><span>{tenderLabel(x.mode)}</span><span className="ui-money">{formatMoney(x.amount, currentCompany)}</span></div>)}</section>
+        <section className="ui-card p-4"><h2 className="ui-t-sec mb-3">POS-wise sales</h2><div className="flex justify-between py-2"><span>{currentCompany?.posSettings?.terminalName || 'Main POS'}</span><span className="ui-money">{formatMoney(total, currentCompany)}</span></div><p className="ui-helper mt-4">Figures come from normal sales invoices marked as POS transactions.</p></section>
+      </div>
+    </div>
+  );
+}
+
+function PosTransactions({ db, currentCompany }) {
+  const [query, setQuery] = useState('');
+  const [mode, setMode] = useState('');
+  const [selected, setSelected] = useState(null);
+  const rows = (db.invoices || []).filter((x) => x.companyId === currentCompany.id && x.posSale).filter((x) => !mode || String(x.tender).toUpperCase() === mode).filter((x) => !query || `${x.number} ${x.customerName}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date)));
+  return <div className="space-y-3">
+    <div className="flex flex-wrap gap-2"><select aria-label="Payment mode" value={mode} onChange={(e) => setMode(e.target.value)} className="ui-input w-40"><option value="">All payments</option><option value="CASH">Cash</option><option value="UPI">UPI</option><option value="CARD">Card</option><option value="CREDIT">Credit</option></select><input className="ui-input min-w-56 flex-1" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search invoice or customer…" /></div>
+    <div className="ui-table-shell overflow-auto" style={{ maxHeight: 'calc(100dvh - 15rem)' }}><table className="ui-table min-w-[950px]"><thead><tr><th>Date</th><th>Time</th><th>POS</th><th>Invoice No</th><th>Customer</th><th className="text-right">Amount</th><th>Payment Mode</th><th>Cashier</th><th>Status</th><th className="ui-action-col">Action</th></tr></thead><tbody>{rows.map((x) => <tr key={x.id} onClick={() => setSelected(x)} className="cursor-pointer"><td>{dateOf(x.date)}</td><td>{timeOf(x.createdAt)}</td><td>{x.posTerminalName || currentCompany?.posSettings?.terminalName || 'Main POS'}</td><td><button className="ui-link" onClick={(e) => { e.stopPropagation(); setSelected(x); }}>{x.number}</button></td><td>{x.customerName || 'Walk-in Customer'}</td><td className="ui-money text-right">{formatMoney(x.total, currentCompany)}</td><td>{tenderLabel(x.tender)}</td><td>{x.cashierName || 'Current user'}</td><td>{x.status}</td><td className="ui-action-col">⋮</td></tr>)}{!rows.length ? <tr><td colSpan="10" className="py-10 text-center ui-muted">No POS transactions match the filters.</td></tr> : null}</tbody></table></div>
+    {selected ? <div className="ui-modal-backdrop" role="presentation" onMouseDown={() => setSelected(null)}><section role="dialog" aria-modal="true" aria-label="Accounting entry" className="ui-modal-panel max-w-5xl" onMouseDown={(e) => e.stopPropagation()}><div className="flex items-start justify-between"><div><h2 className="ui-t-major">Sales Invoice · {selected.number}</h2><p className="ui-muted">{dateOf(selected.date)} · {selected.customerName}</p></div><button className="ui-btn ui-btn-secondary" onClick={() => setSelected(null)}>Close</button></div><table className="ui-table mt-4 w-full"><thead><tr><th>Date</th><th>Voucher No</th><th>Ledger Name</th><th className="text-right">Debit</th><th className="text-right">Credit</th></tr></thead><tbody><tr><td>{dateOf(selected.date)}</td><td>{selected.number}</td><td>{selected.customerName || 'Walk-in Customer'}</td><td className="ui-money text-right">{formatMoney(selected.total, currentCompany)}</td><td>—</td></tr><tr><td>{dateOf(selected.date)}</td><td>{selected.number}</td><td>Sales Account</td><td>—</td><td className="ui-money text-right">{formatMoney(selected.subtotal, currentCompany)}</td></tr>{Number(selected.gstTotal || 0) ? <tr><td>{dateOf(selected.date)}</td><td>{selected.number}</td><td>Output GST</td><td>—</td><td className="ui-money text-right">{formatMoney(selected.gstTotal, currentCompany)}</td></tr> : null}</tbody></table><p className="ui-narration mt-4">POS sale {selected.number}</p></section></div> : null}
+  </div>;
+}
+
+function PosReturns({ db, currentCompany }) {
+  const rows = (db.creditNotes || []).filter((x) => x.companyId === currentCompany.id && (x.posReturn || x.sourceSystem === 'POS'));
+  return <div className="ui-table-shell overflow-auto" style={{ maxHeight: 'calc(100dvh - 13rem)' }}><table className="ui-table min-w-[900px]"><thead><tr><th>Date</th><th>Return No</th><th>Original Invoice</th><th>Customer</th><th>POS</th><th className="text-right">Amount</th><th>Refund Mode</th><th>Cashier</th><th>Status</th></tr></thead><tbody>{rows.map((x) => <tr key={x.id}><td>{dateOf(x.date)}</td><td>{x.number}</td><td>{x.refNo || x.againstInvoiceNumber || '—'}</td><td>{x.customerName}</td><td>{x.posTerminalName || 'Main POS'}</td><td className="ui-money text-right">{formatMoney(x.total, currentCompany)}</td><td>{x.refundMode || 'Original mode'}</td><td>{x.cashierName || 'Current user'}</td><td>{x.status}</td></tr>)}{!rows.length ? <tr><td colSpan="9" className="py-10 text-center ui-muted">No POS returns yet. Start a return from Billing using the original invoice.</td></tr> : null}</tbody></table></div>;
+}
+
+function PosSessions({ db, currentCompany }) {
+  const rows = (db.posDayCloses || []).filter((x) => x.companyId === currentCompany.id).slice().sort((a, b) => String(b.closedAt || b.date).localeCompare(String(a.closedAt || a.date)));
+  return <div className="ui-table-shell overflow-auto"><table className="ui-table min-w-[850px]"><thead><tr><th>Date</th><th>Terminal</th><th className="text-right">Transactions</th><th className="text-right">Cash sales</th><th className="text-right">Card</th><th className="text-right">UPI</th><th className="text-right">Expected cash</th><th className="text-right">Actual cash</th><th className="text-right">Short / Excess</th></tr></thead><tbody>{rows.map((x) => <tr key={x.id}><td>{x.date}</td><td>{x.terminalName || 'Main POS'}</td><td className="text-right">{x.invoices || 0}</td><td className="ui-money text-right">{formatMoney(x.cash, currentCompany)}</td><td className="ui-money text-right">{formatMoney(x.card, currentCompany)}</td><td className="ui-money text-right">{formatMoney(x.upi, currentCompany)}</td><td className="ui-money text-right">{formatMoney(x.cash, currentCompany)}</td><td className="ui-money text-right">{formatMoney(x.countedCash, currentCompany)}</td><td className="ui-money text-right">{formatMoney(x.overShort, currentCompany)}</td></tr>)}{!rows.length ? <tr><td colSpan="9" className="py-10 text-center ui-muted">No closed sessions yet.</td></tr> : null}</tbody></table></div>;
+}
+
+const SETTING_TABS = ['General', 'Terminals', 'Payments', 'Sales', 'Returns', 'Sessions', 'Field Customization', 'Printing', 'Permissions'];
+function PosSettings({ setDb, currentCompany }) {
+  const saved = currentCompany.posSettings || {};
+  const [tab, setTab] = useState('General');
+  const [form, setForm] = useState({ terminalName: 'Main POS', terminalCode: 'POS-01', walkInCustomer: 'Walk-in Customer', printSize: '80mm Thermal', priceList: 'Retail', allowWithoutInvoice: false, ...saved });
+  const update = (key, value) => setForm((p) => ({ ...p, [key]: value }));
+  const save = () => { setDb((prev) => ({ ...prev, companies: (prev.companies || []).map((x) => x.id === currentCompany.id ? { ...x, posSettings: form } : x) })); notify.success('POS settings saved.'); };
+  return <div className="space-y-4"><div className="flex gap-1 overflow-x-auto border-b" style={{ borderColor: 'rgb(var(--border))' }}>{SETTING_TABS.map((x) => <button key={x} className={`ui-tab whitespace-nowrap ${tab === x ? 'ui-tab-active' : ''}`} onClick={() => setTab(x)}>{x}</button>)}</div><section className="ui-card p-4"><h2 className="ui-t-sec">{tab}</h2><p className="ui-helper mb-4">Configure {tab.toLowerCase()} behaviour for this POS workspace.</p>
+    {tab === 'Terminals' || tab === 'General' ? <div className="grid gap-3 md:grid-cols-2"><label className="ui-label">POS name<input className="ui-input mt-1 w-full" value={form.terminalName} onChange={(e) => update('terminalName', e.target.value)} /></label><label className="ui-label">POS code<input className="ui-input mt-1 w-full" value={form.terminalCode} onChange={(e) => update('terminalCode', e.target.value)} /></label><label className="ui-label">Default walk-in customer<input className="ui-input mt-1 w-full" value={form.walkInCustomer} onChange={(e) => update('walkInCustomer', e.target.value)} /></label><label className="ui-label">Price list<input className="ui-input mt-1 w-full" value={form.priceList} onChange={(e) => update('priceList', e.target.value)} /></label></div> : null}
+    {tab === 'Payments' ? <div className="space-y-2"><p>Cash, UPI and Card use the branch ledger mappings configured under POS Payment Accounts.</p><p className="ui-helper">Credit leaves the invoice outstanding. Split payments create and allocate one receipt per paid tender.</p></div> : null}
+    {tab === 'Returns' ? <label className="flex items-center gap-2"><input type="checkbox" checked={form.allowWithoutInvoice} onChange={(e) => update('allowWithoutInvoice', e.target.checked)} />Allow return without invoice with manager approval</label> : null}
+    {tab === 'Printing' ? <label className="ui-label block max-w-sm">Default format<select className="ui-input mt-1 w-full" value={form.printSize} onChange={(e) => update('printSize', e.target.value)}><option>58mm Thermal</option><option>80mm Thermal</option><option>A4</option></select></label> : null}
+    {tab === 'Field Customization' ? <div className="grid gap-2 md:grid-cols-2">{['Item Code','Barcode','Qty','Rate','MRP','Discount','Tax','Batch','Expiry','Warehouse'].map((x) => <label key={x} className="flex items-center gap-2 rounded border p-2" style={{ borderColor: 'rgb(var(--border))' }}><input type="checkbox" defaultChecked={!['Batch','Expiry'].includes(x)} />{x}</label>)}</div> : null}
+    {tab === 'Permissions' ? <div className="grid gap-2 md:grid-cols-2">{['Sale','Cancel Bill','Return','Return Without Invoice','Discount','Price Override','Credit Sale','Cash In / Out','Session Close / Reopen','Manager Approval'].map((x) => <label key={x} className="flex items-center gap-2 rounded border p-2" style={{ borderColor: 'rgb(var(--border))' }}><input type="checkbox" defaultChecked={['Sale','Return'].includes(x)} />{x}</label>)}</div> : null}
+    {['Sales','Sessions'].includes(tab) ? <p className="ui-muted">These controls use the existing invoice numbering, warehouse, GST and session posting rules.</p> : null}
+    <div className="mt-5 flex justify-end"><button className="ui-btn ui-btn-primary" onClick={save}>Save POS settings</button></div></section></div>;
+}
+
+export default function PosScreen(props) {
+  const [active, setActive] = useState('billing');
+  return <div className="space-y-4"><div className="flex items-center justify-between"><div><h1 className="ui-t-page">Point of Sale</h1><p className="ui-muted ui-t-body">Fast billing, payments, sessions and counter control</p></div></div><nav aria-label="POS workspace" className="flex gap-1 overflow-x-auto border-b" style={{ borderColor: 'rgb(var(--border))' }}>{POS_TABS.map(({ key, label, icon: Icon }) => <button key={key} type="button" onClick={() => setActive(key)} className={`ui-tab flex items-center gap-1.5 whitespace-nowrap ${active === key ? 'ui-tab-active' : ''}`}><Icon size={15} />{label}</button>)}</nav>{active === 'billing' ? <PosBillingScreen {...props} /> : null}{active === 'dashboard' ? <PosDashboard {...props} /> : null}{active === 'transactions' ? <PosTransactions {...props} /> : null}{active === 'returns' ? <PosReturns {...props} /> : null}{active === 'sessions' ? <PosSessions {...props} /> : null}{active === 'settings' ? <PosSettings {...props} /> : null}</div>;
 }

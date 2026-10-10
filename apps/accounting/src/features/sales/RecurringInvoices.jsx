@@ -43,7 +43,7 @@ export default function RecurringInvoices({ db, setDb, currentCompany, onNavigat
   /* One row's menu is open at a time, so one ref is enough — it is attached to
      whichever row that is. Without it the menu stayed open over the rows below
      it until you found its own button again. */
-  const rowMenuRef = useDismissable(Boolean(rowMenu), () => setRowMenu(null));
+  useDismissable(Boolean(rowMenu), () => setRowMenu(null));
   // A schedule can copy an invoice that already exists, or be written from
   // scratch — a retainer that has never been billed once still needs to repeat.
   const [mode, setMode] = useState('NEW');
@@ -148,6 +148,10 @@ export default function RecurringInvoices({ db, setDb, currentCompany, onNavigat
     if (mode === 'NEW') {
       if (!String(draft.customerId || '').trim()) {
         notify.error('Pick the customer this repeats for.');
+        return;
+      }
+      if (draftTotals.customer?.isActive === false) {
+        notify.error('This customer is inactive. Activate the customer before creating a recurring invoice.');
         return;
       }
       if (!draftTotals.lines.length) {
@@ -478,15 +482,6 @@ export default function RecurringInvoices({ db, setDb, currentCompany, onNavigat
     { value: 'Inactive', label: 'Finished', tone: 'cancelled' },
   ];
 
-  const recStatusCounts = useMemo(() => {
-    const counts = { '': recSearch.filtered.length };
-    for (const t of recSearch.filtered) {
-      const st = scheduleStatus(t);
-      counts[st] = (counts[st] || 0) + 1;
-    }
-    return counts;
-  }, [recSearch.filtered]);
-
   /*
    * What a schedule list is read for: how much of the month's billing raises
    * itself, and how much of it has stopped doing so. Amounts are normalised to
@@ -651,7 +646,7 @@ export default function RecurringInvoices({ db, setDb, currentCompany, onNavigat
                           />
                         </td>
                         <td className="px-3 py-2">
-                          <span className="text-[0.8125rem] ui-muted">
+                          <span className="text-sm ui-muted">
                             {String(itemsMaster.find((i) => String(i.id) === String(l.itemId))?.unit || '').trim() || '—'}
                           </span>
                         </td>
@@ -871,9 +866,11 @@ export default function RecurringInvoices({ db, setDb, currentCompany, onNavigat
   return (
     <DocumentListShell
       entity="recurring"
+      className="sales-list-page"
       title="Recurring Invoices"
       company={currentCompany}
       search={{
+        before: <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="ui-select ui-ctl-compact w-40" aria-label="Schedule status">{REC_STATUS_TABS.map((item) => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select>,
         value: recSearch.query,
         onChange: (v) => {
           recSearch.setQuery(v);
@@ -933,16 +930,9 @@ export default function RecurringInvoices({ db, setDb, currentCompany, onNavigat
         { label: 'Due this month', value: recHeadline.dueThisMonth, tone: 'outstanding', Icon: Receipt },
         { label: 'Paused per month', value: recHeadline.paused, tone: 'cancelled', Icon: PauseCircle },
       ]}
-      tabs={REC_STATUS_TABS}
-      tabsLabel="Schedule status"
-      statusValue={statusFilter}
-      statusCounts={recStatusCounts}
-      onStatusChange={(v) => {
-        setStatusFilter(v);
-        setPage(1);
-      }}
-      tabsExtras={
-        <>
+      denseCards
+      above={
+        <div className="flex flex-wrap items-center gap-2">
           <select
             className="ui-select w-auto"
             value={customerFilter}
@@ -984,15 +974,10 @@ export default function RecurringInvoices({ db, setDb, currentCompany, onNavigat
               aria-label="Next invoice date to"
             />
           </div>
-        </>
+        </div>
       }
-      tip={{
-        storageKey: 'neev.tip.recurringSchedules',
-        text: 'A schedule bills its period once. Pressing Run now twice cannot raise the same month again.',
-        Icon: RefreshCw,
-      }}
     >
-      <div className="overflow-x-auto ui-table-scroll">
+      <div className="overflow-x-auto ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}>
             <table className="ui-table ui-table-wide ui-table-sticky">
               <thead>
                 <tr>
@@ -1002,8 +987,8 @@ export default function RecurringInvoices({ db, setDb, currentCompany, onNavigat
                   <ColumnHeader label="Frequency" col="frequency" state={recFilters} />
                   <ColumnHeader label="Amount" col="total" state={recFilters} className="ui-num" align="right" />
                   <ColumnHeader label="Next invoice date" col="nextRunDate" state={recFilters} type="date" />
-                  <ColumnHeader label="Status" col="status" state={recFilters} align="center" />
-                  <th scope="col" className="w-10"><span className="sr-only">Actions</span></th>
+                  <ColumnHeader label="Status" col="status" state={recFilters} />
+                  <th scope="col" className="ui-action-col"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="ui-rows">
@@ -1056,9 +1041,9 @@ export default function RecurringInvoices({ db, setDb, currentCompany, onNavigat
                       <td className="ui-col-date">
                         {status === 'Active' ? <SalesDate value={t.nextRunDate} /> : '—'}
                       </td>
-                      <td><StatusPill status={status} /></td>
-                      <td className="text-right">
-                        <div className="relative inline-block" ref={rowMenu === t.id ? rowMenuRef : undefined}>
+                      <td className="whitespace-nowrap"><StatusPill status={status} /></td>
+                      <td className="ui-action-col">
+                        <div className="relative inline-block">
                           <button
                             type="button"
                             onClick={() => setRowMenu(rowMenu === t.id ? null : t.id)}

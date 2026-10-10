@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@ui/permissions/useFeatures', () => ({ useFeatures: () => ({ isEnabled: () => false }) }));
 vi.mock('@ui/api/purchaseDocs', () => ({
   createDocApi: vi.fn(async () => ({})),
+  updateDocApi: vi.fn(async () => ({})),
   hasApiSession: () => false,
 }));
 

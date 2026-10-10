@@ -1,437 +1,81 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
-
+import { MoreVertical, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { PageHeader, StatusPill } from '@ui/components/ui/Primitives';
 import { notify } from '@ui/components/ui/notify';
 import { fyRange } from '@ui/utils/tdsTcs';
 import { tdsGroupSide } from '@ui/utils/tdsLedgers';
-import { NEW_ACT_FROM, TDS_NATURES, resolveRule, ruleReference } from './ruleMaster';
-import { unmappedNatures } from './reports';
-
-/**
- * Configuration → Taxation → TDS: the one place TDS is configured.
- *
- * Purchase and sales forms carry only compact, transaction-level controls;
- * everything an administrator decides lives here — whether the company
- * deducts at all, its identity as a deductor, its defaults, which ledgers
- * accumulate which natures, and which parties carry which defaults. The
- * Natures/Rules section is deliberately READ-ONLY: rates, thresholds and
- * statutory references come from the controlled Rule Master, and a settings
- * page that let somebody retype them would be a second answer to a question
- * the Act already answered.
- */
+import { TDS_NATURES, resolveRule, ruleReference } from './ruleMaster';
 
 const DEDUCTOR_TYPES = ['Company', 'Firm', 'Individual/HUF', 'AOP/BOI', 'Local Authority', 'Government', 'Others'];
+const today = () => new Date().toISOString().slice(0, 10);
+const blank = { code: '', name: '', applicableTo: 'Vendor', nature: '', rate: '', threshold: '', deducteeType: 'All', lowerDeduction: 'As per certificate', allowOverride: true, linkedLedgerId: '', active: true, custom: true };
+const Field = ({ label, children, className = '' }) => <div className={className}><label className="ui-label">{label}</label>{children}</div>;
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
-
-const Section = ({ title, description, children, actions = null }) => (
-  <section className="ui-card p-5">
-    <div className="flex flex-wrap items-start justify-between gap-2">
-      <div>
-        <h3 className="ui-t-sec">{title}</h3>
-        {description ? <p className="ui-caption mt-0.5 max-w-2xl">{description}</p> : null}
-      </div>
-      {actions}
-    </div>
-    <div className="mt-4">{children}</div>
-  </section>
-);
-
-const TdsSettings = ({ db, setDb, currentCompany, onOpenChart = null, onOpenVendors = null, onOpenCustomers = null }) => {
+export default function TdsSettings({ db, setDb, currentCompany, sectionsOnly = false }) {
   const companyId = currentCompany?.id;
   const saved = currentCompany?.profile?.taxCompliances?.tds || {};
+  const [tab, setTab] = useState(sectionsOnly ? 'sections' : 'defaults');
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('ALL');
+  const [type, setType] = useState('ALL');
+  const [drawer, setDrawer] = useState(null);
+  const [menu, setMenu] = useState(null);
+  const [form, setForm] = useState({
+    enabled: Boolean(saved.enabled), tan: String(saved.tan || ''), deductorName: String(saved.deductorName || currentCompany?.name || ''),
+    deductorType: String(saved.deductorType || 'Company'), pan: String(saved.pan || currentCompany?.pan || ''),
+    defaultNatureCode: String(saved.defaultNatureCode || ''), defaultPayableLedgerId: String(saved.defaultPayableLedgerId || ''),
+    defaultReceivableLedgerId: String(saved.defaultReceivableLedgerId || ''), roundOffPreference: String(saved.roundOffPreference || 'NEAREST_RUPEE'),
+    thresholdHandling: String(saved.thresholdHandling || 'STATUTORY'), responsiblePersonName: String(saved.responsiblePersonName || ''),
+    responsiblePersonDesignation: String(saved.responsiblePersonDesignation || ''), responsiblePersonPan: String(saved.responsiblePersonPan || ''),
+    responsiblePersonEmail: String(saved.responsiblePersonEmail || ''), responsiblePersonPhone: String(saved.responsiblePersonPhone || ''),
+  });
+  const changeForm = (patch) => setForm((old) => ({ ...old, ...patch }));
+  const groups = useMemo(() => (db.accountGroups || []).filter((x) => Number(x.companyId) === Number(companyId)), [db.accountGroups, companyId]);
+  const ledgers = useMemo(() => (db.chartOfAccounts || []).filter((x) => Number(x.companyId) === Number(companyId) && x.isActive !== false).map((x) => ({ ...x, side: String(x.tdsSide || '').toUpperCase() || tdsGroupSide(groups, x.groupId) })).sort((a, b) => String(a.name).localeCompare(String(b.name))), [db.chartOfAccounts, companyId, groups]);
+  const [rows, setRows] = useState(() => [...TDS_NATURES.map((nature) => {
+    const rule = resolveRule(nature.code, today()); const override = saved.rateOverrides?.[nature.code] || {};
+    return { code: ruleReference(rule) || nature.legacySection, legacyCode: nature.legacySection, natureCode: nature.code, name: nature.name, nature: override.nature || nature.name, applicableTo: override.applicableTo || 'Vendor', rate: Number(override.rate ?? rule?.rate ?? 0), threshold: Number(override.threshold ?? rule?.annual ?? rule?.single ?? rule?.monthly ?? 0), deducteeType: override.deducteeType || 'All', lowerDeduction: override.lowerDeduction || 'As per certificate', allowOverride: override.allowOverride !== false, linkedLedgerId: String(override.linkedLedgerId || ''), active: override.active !== false, custom: false };
+  }), ...(Array.isArray(saved.customSections) ? saved.customSections : [])]);
+  const filtered = rows.filter((row) => `${row.code} ${row.name}`.toLowerCase().includes(query.toLowerCase()) && (status === 'ALL' || row.active === (status === 'ACTIVE')) && (type === 'ALL' || row.applicableTo.toUpperCase() === type));
+  const payable = ledgers.filter((x) => x.side === 'PAYABLE'); const receivable = ledgers.filter((x) => x.side === 'RECEIVABLE');
 
-  const [form, setForm] = useState(() => ({
-    enabled: Boolean(saved.enabled),
-    tan: String(saved.tan || ''),
-    deductorName: String(saved.deductorName || currentCompany?.name || ''),
-    deductorType: String(saved.deductorType || 'Company'),
-    defaultNatureCode: String(saved.defaultNatureCode || ''),
-    defaultPayableLedgerId: String(saved.defaultPayableLedgerId || ''),
-    defaultReceivableLedgerId: String(saved.defaultReceivableLedgerId || ''),
-    /* Advanced */
-    state: String(saved.state || ''),
-    registrationType: String(saved.registrationType || 'Applicable'),
-  }));
-  const set = (patch) => setForm((prev) => ({ ...prev, ...patch }));
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-
-  const groups = useMemo(
-    () => (db?.accountGroups || []).filter((g) => Number(g?.companyId) === Number(companyId)),
-    [db?.accountGroups, companyId]
-  );
-
-  /* Every ledger filed under the TDS branch of the chart, with its side. */
-  const tdsLedgers = useMemo(
-    () =>
-      (db?.chartOfAccounts || [])
-        .filter((a) => Number(a?.companyId) === Number(companyId))
-        .map((a) => ({ ...a, side: String(a?.tdsSide || '').toUpperCase() || tdsGroupSide(groups, a.groupId) }))
-        .filter((a) => a.side)
-        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
-    [db?.chartOfAccounts, companyId, groups]
-  );
-  const payableLedgers = tdsLedgers.filter((l) => l.side === 'PAYABLE');
-  const receivableLedgers = tdsLedgers.filter((l) => l.side === 'RECEIVABLE');
-
-  const unmapped = useMemo(() => unmappedNatures(db, companyId), [db, companyId]);
-
-  /* Parties carrying TDS defaults, and the gap that blocks a return. */
-  const parties = useMemo(() => {
-    const rows = [];
-    for (const v of db?.vendors || []) {
-      if (Number(v.companyId) !== Number(companyId)) continue;
-      if (v.tdsApplicable === undefined && !v.tdsNatureCode && !v.tdsSection) continue;
-      rows.push({ kind: 'Vendor', name: v.displayName || v.name || '', pan: String(v.pan || '').trim(), applicable: v.tdsApplicable !== false, nature: String(v.tdsNatureCode || '') });
-    }
-    for (const c of db?.customers || []) {
-      if (Number(c.companyId) !== Number(companyId)) continue;
-      if (c.tdsApplicable === undefined && !c.tdsNatureCode && !c.tdsSection) continue;
-      rows.push({ kind: 'Customer', name: c.displayName || c.name || '', pan: String(c.pan || '').trim(), applicable: c.tdsApplicable !== false, nature: String(c.tdsNatureCode || '') });
-    }
-    return rows.sort((a, b) => a.name.localeCompare(b.name));
-  }, [db?.vendors, db?.customers, companyId]);
-  const panMissing = parties.filter((p) => p.applicable && !p.pan).length;
-
-  const fy = fyRange(todayIso());
-
-  const save = () => {
-    const tan = String(form.tan || '').trim().toUpperCase();
-    if (form.enabled && !tan) {
-      notify.error('TAN is required while TDS is enabled — the challan and the return both carry it.');
-      return;
-    }
-    if (form.enabled && tan && !/^[A-Z]{4}\d{5}[A-Z]$/.test(tan)) {
-      notify.error('That is not a TAN — four letters, five digits, one letter.');
-      return;
-    }
-
-    setDb((prev) => ({
-      ...prev,
-      companies: (prev.companies || []).map((c) => {
-        if (Number(c.id) !== Number(companyId)) return c;
-        const profile = c?.profile && typeof c.profile === 'object' ? c.profile : {};
-        const taxCompliances = profile?.taxCompliances && typeof profile.taxCompliances === 'object' ? profile.taxCompliances : {};
-        return {
-          ...c,
-          profile: {
-            ...profile,
-            taxCompliances: {
-              ...taxCompliances,
-              tds: {
-                ...(taxCompliances.tds && typeof taxCompliances.tds === 'object' ? taxCompliances.tds : {}),
-                enabled: Boolean(form.enabled),
-                tan,
-                deductorName: String(form.deductorName || '').trim(),
-                deductorType: String(form.deductorType || '').trim(),
-                defaultNatureCode: String(form.defaultNatureCode || '').trim().toUpperCase(),
-                defaultPayableLedgerId: String(form.defaultPayableLedgerId || '').trim(),
-                defaultReceivableLedgerId: String(form.defaultReceivableLedgerId || '').trim(),
-                state: String(form.state || '').trim(),
-                registrationType: String(form.registrationType || 'Applicable').trim(),
-              },
-            },
-          },
-        };
-      }),
-    }));
-    notify.success('TDS configuration saved.');
+  const persist = (nextRows = rows, showNotice = true) => {
+    const tan = form.tan.trim().toUpperCase();
+    if (form.enabled && !/^[A-Z]{4}\d{5}[A-Z]$/.test(tan)) { notify.error('Enter a valid TAN to enable TDS.'); return false; }
+    const rateOverrides = Object.fromEntries(nextRows.filter((x) => !x.custom).map((x) => [x.natureCode, { rate: Number(x.rate) || 0, threshold: Number(x.threshold) || 0, applicableTo: x.applicableTo, nature: x.nature, deducteeType: x.deducteeType, lowerDeduction: x.lowerDeduction, allowOverride: x.allowOverride, linkedLedgerId: x.linkedLedgerId, active: x.active }]));
+    setDb((old) => ({ ...old, companies: (old.companies || []).map((company) => Number(company.id) !== Number(companyId) ? company : ({ ...company, profile: { ...(company.profile || {}), taxCompliances: { ...(company.profile?.taxCompliances || {}), tds: { ...(company.profile?.taxCompliances?.tds || {}), ...form, tan, rateOverrides, customSections: nextRows.filter((x) => x.custom) } } } })) }));
+    if (showNotice) notify.success('TDS settings saved.'); return true;
   };
+  const saveDrawer = (event) => { event.preventDefault(); const draft = drawer.draft; if (!draft.code.trim() || !draft.name.trim()) return notify.error('Section and description are required.'); if (rows.some((x, i) => i !== drawer.index && x.code.toUpperCase() === draft.code.trim().toUpperCase())) return notify.error('This TDS section already exists.'); const clean = { ...draft, code: draft.code.trim().toUpperCase(), name: draft.name.trim(), rate: Number(draft.rate) || 0, threshold: Number(draft.threshold) || 0 }; const next = drawer.index == null ? [...rows, clean] : rows.map((x, i) => i === drawer.index ? clean : x); setRows(next); persist(next, false); setDrawer(null); notify.success('TDS section saved.'); };
+  const openMenu = (event, index) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMenu((old) => old?.index === index ? null : { index, top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right) });
+  };
+  const toggle = (index) => { const next = rows.map((x, i) => i === index ? { ...x, active: !x.active } : x); setRows(next); persist(next, false); setMenu(null); };
+  const remove = (index) => { const next = rows[index].custom ? rows.filter((_, i) => i !== index) : rows.map((x, i) => i === index ? { ...x, active: false, linkedLedgerId: '' } : x); setRows(next); persist(next, false); setMenu(null); notify.success(rows[index].custom ? 'TDS section deleted.' : 'Section marked inactive.'); };
+  const tabs = [['defaults', 'Defaults & Mapping'], ['filing', 'E-Filing Details']];
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        entity="tds"
-        title="TDS"
-              actions={
-          <button type="button" onClick={save} className="ui-btn ui-btn-primary">
-            Save configuration
-          </button>
-        }
-      />
+  return <div className="tds-settings-page space-y-3">
+    <PageHeader entity="tds" title={sectionsOnly ? 'TDS Sections' : 'TDS'} actions={<>
+      {!sectionsOnly ? <select className="ui-select ui-ctl-compact tds-view-select" value={tab} onChange={(event) => { setTab(event.target.value); setMenu(null); }} aria-label="TDS view">{tabs.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select> : null}
+      {tab === 'sections' ? <div className="relative tds-header-search"><Search size={15} className="pointer-events-none absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-[rgb(var(--fg-muted))]" /><input className="ui-input w-full pl-8" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sections" aria-label="Search TDS sections" /></div> : null}
+      {tab === 'sections' ? <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => setDrawer({ index: null, draft: { ...blank } })}><Plus size={14} /> Add Section</button> : null}
+      {!sectionsOnly ? <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => persist()}>Save</button> : null}
+    </>} />
 
-      {/* 1 — the switch everything else hangs off. */}
-      <Section
-        title="Enable TDS"
-        description="Off: no form asks a TDS question and nothing is calculated. On: the compact controls appear on purchases, payments, sales and receipts."
-      >
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="ui-checkbox"
-            checked={form.enabled}
-            onChange={(e) => set({ enabled: e.target.checked })}
-          />
-          This company deducts and tracks TDS
-        </label>
-      </Section>
+    {tab === 'sections' && <><div className="flex justify-end gap-2"><select className="ui-select ui-ctl-compact w-44" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="ALL">All statuses</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></select><select className="ui-select ui-ctl-compact w-44" value={type} onChange={(e) => setType(e.target.value)} aria-label="Applicable to"><option value="ALL">All types</option><option value="VENDOR">Vendor</option><option value="CUSTOMER">Customer</option></select></div>
+      <div className="ui-card overflow-hidden"><table className="ui-table tds-sections-table"><thead><tr><th>Section</th><th>Description</th><th>Applicable To</th><th className="text-end">Rate (%)</th><th className="text-end">Threshold Limit (₹)</th><th>Linked Ledger</th><th>Status</th><th className="ui-action-col">Actions</th></tr></thead><tbody>{filtered.map((row) => { const index = rows.indexOf(row); const ledger = receivable.find((x) => String(x.id) === row.linkedLedgerId); return <tr key={`${row.natureCode || 'custom'}-${row.code}`}><td className="font-semibold ui-mono">{row.code}</td><td>{row.name}</td><td>{row.applicableTo}</td><td className="ui-money">{Number(row.rate).toFixed(2)}</td><td className="ui-money">{Number(row.threshold).toLocaleString('en-IN')}</td><td>{ledger?.name || '—'}</td><td><StatusPill status={row.active ? 'Active' : 'Inactive'} /></td><td className="ui-action-col"><button type="button" className="ui-icon-btn" aria-label={`Actions for ${row.code}`} onClick={(event) => openMenu(event, index)}><MoreVertical size={15} /></button></td></tr>; })}</tbody></table></div>
+      {menu && <><button type="button" className="fixed inset-0 z-[89] cursor-default bg-transparent" aria-label="Close action menu" onClick={() => setMenu(null)} /><div className="fixed z-[90] w-40 rounded border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-1 shadow-lg" style={{ top: menu.top, right: menu.right }}><button type="button" className="report-menu-item flex items-center gap-2 whitespace-nowrap" onClick={() => { const row = rows[menu.index]; setDrawer({ index: menu.index, draft: { ...row, linkedLedgerId: receivable.some((ledger) => String(ledger.id) === String(row.linkedLedgerId)) ? row.linkedLedgerId : '' } }); setMenu(null); }}><Pencil size={14} /> Edit</button><button type="button" className="report-menu-item whitespace-nowrap" onClick={() => toggle(menu.index)}>{rows[menu.index]?.active ? 'Mark inactive' : 'Mark active'}</button><button type="button" className="report-menu-item flex items-center gap-2 whitespace-nowrap text-[rgb(var(--neg))]" onClick={() => remove(menu.index)}><Trash2 size={14} /> Delete</button></div></>}
+    </>}
 
-      {/* 2 — who the deductor is. */}
-      <Section title="TDS Profile" description="The identity the challan and the quarterly return carry.">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <label className="ui-label" htmlFor="tds-tan">TAN</label>
-            <input
-              id="tds-tan"
-              type="text"
-              className="ui-input ui-mono w-full uppercase"
-              value={form.tan}
-              onChange={(e) => set({ tan: e.target.value })}
-              placeholder="BLRN12345F"
-            />
-          </div>
-          <div>
-            <label className="ui-label" htmlFor="tds-deductor-name">Deductor Name</label>
-            <input
-              id="tds-deductor-name"
-              type="text"
-              className="ui-input w-full"
-              value={form.deductorName}
-              onChange={(e) => set({ deductorName: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="ui-label" htmlFor="tds-deductor-type">Deductor Type</label>
-            <select
-              id="tds-deductor-type"
-              className="ui-select w-full"
-              value={form.deductorType}
-              onChange={(e) => set({ deductorType: e.target.value })}
-            >
-              {DEDUCTOR_TYPES.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="ui-label">Financial Year Context</label>
-            {/* Stated, not chosen: the FY follows each transaction's date, and
-                the 2026 Act transition follows the rule master. */}
-            <div className="ui-input ui-sunken flex items-center">{fy?.label || '—'}</div>
-            <p className="ui-caption mt-1">Follows each transaction's date; the {NEW_ACT_FROM} Act transition is automatic.</p>
-          </div>
-          <div>
-            <label className="ui-label" htmlFor="tds-default-nature">Default Nature</label>
-            <select
-              id="tds-default-nature"
-              className="ui-select w-full"
-              value={form.defaultNatureCode}
-              onChange={(e) => set({ defaultNatureCode: e.target.value })}
-            >
-              <option value="">— none —</option>
-              {TDS_NATURES.filter((n) => n.active !== false).map((n) => (
-                <option key={n.code} value={n.code}>{n.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="ui-label" htmlFor="tds-default-payable">Default Payable Ledger</label>
-            <select
-              id="tds-default-payable"
-              className="ui-select w-full"
-              value={form.defaultPayableLedgerId}
-              onChange={(e) => set({ defaultPayableLedgerId: e.target.value })}
-            >
-              <option value="">— pick per transaction —</option>
-              {payableLedgers.map((l) => (
-                <option key={l.id} value={String(l.id)}>{l.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="ui-label" htmlFor="tds-default-receivable">Default Receivable Ledger</label>
-            <select
-              id="tds-default-receivable"
-              className="ui-select w-full"
-              value={form.defaultReceivableLedgerId}
-              onChange={(e) => set({ defaultReceivableLedgerId: e.target.value })}
-            >
-              <option value="">— pick per transaction —</option>
-              {receivableLedgers.map((l) => (
-                <option key={l.id} value={String(l.id)}>{l.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+    {tab === 'defaults' && <div className="grid grid-cols-1 gap-3 lg:grid-cols-2"><section className="ui-card p-4"><h3 className="ui-t-sec mb-3">TDS Profile</h3><div className="grid grid-cols-2 gap-3"><label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" className="ui-checkbox" checked={form.enabled} onChange={(e) => changeForm({ enabled: e.target.checked })} /> Enable TDS for this company</label><Field label="TAN"><input aria-label="TAN" className="ui-input w-full uppercase" value={form.tan} onChange={(e) => changeForm({ tan: e.target.value })} /></Field><Field label="Deductor PAN"><input aria-label="Deductor PAN" className="ui-input w-full uppercase" value={form.pan} onChange={(e) => changeForm({ pan: e.target.value })} /></Field><Field label="Deductor Name"><input aria-label="Deductor Name" className="ui-input w-full" value={form.deductorName} onChange={(e) => changeForm({ deductorName: e.target.value })} /></Field><Field label="Deductor Type"><select aria-label="Deductor Type" className="ui-select w-full" value={form.deductorType} onChange={(e) => changeForm({ deductorType: e.target.value })}>{DEDUCTOR_TYPES.map((x) => <option key={x}>{x}</option>)}</select></Field></div></section>
+      <section className="ui-card p-4"><h3 className="ui-t-sec mb-3">Defaults & Mapping</h3><div className="grid grid-cols-2 gap-3"><Field label="Default Nature"><select aria-label="Default Nature" className="ui-select w-full" value={form.defaultNatureCode} onChange={(e) => changeForm({ defaultNatureCode: e.target.value })}><option value="">None</option>{TDS_NATURES.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select></Field><Field label="Financial Year"><div className="ui-input ui-sunken">{fyRange(today())?.label || '—'}</div></Field><Field label="Default Payable Ledger"><select aria-label="Default Payable Ledger" className="ui-select w-full" value={form.defaultPayableLedgerId} onChange={(e) => changeForm({ defaultPayableLedgerId: e.target.value })}><option value="">Pick per transaction</option>{payable.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field><Field label="Default Receivable Ledger"><select aria-label="Default Receivable Ledger" className="ui-select w-full" value={form.defaultReceivableLedgerId} onChange={(e) => changeForm({ defaultReceivableLedgerId: e.target.value })}><option value="">Pick per transaction</option>{receivable.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field><Field label="Threshold Handling"><select className="ui-select w-full" value={form.thresholdHandling} onChange={(e) => changeForm({ thresholdHandling: e.target.value })}><option value="STATUTORY">Apply statutory thresholds</option><option value="ALWAYS_DEDUCT">Always deduct</option></select></Field><Field label="Round-off"><select className="ui-select w-full" value={form.roundOffPreference} onChange={(e) => changeForm({ roundOffPreference: e.target.value })}><option value="NEAREST_RUPEE">Nearest rupee</option><option value="TWO_DECIMALS">Two decimals</option></select></Field></div></section></div>}
 
-        {/* The compliance minutiae, folded away from the everyday fields. */}
-        <div className="mt-4 border-t pt-3">
-          <button
-            type="button"
-            className="ui-btn ui-btn-ghost ui-btn-sm !px-0"
-            aria-expanded={advancedOpen}
-            onClick={() => setAdvancedOpen((v) => !v)}
-          >
-            {advancedOpen ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
-            Advanced
-          </button>
-          {advancedOpen ? (
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <label className="ui-label" htmlFor="tds-state">Deductor State</label>
-                <input
-                  id="tds-state"
-                  type="text"
-                  className="ui-input w-full"
-                  value={form.state}
-                  onChange={(e) => set({ state: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="ui-label" htmlFor="tds-reg-type">Registration Type</label>
-                <select
-                  id="tds-reg-type"
-                  className="ui-select w-full"
-                  value={form.registrationType}
-                  onChange={(e) => set({ registrationType: e.target.value })}
-                >
-                  {['Applicable', 'Not Applicable'].map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </Section>
+    {tab === 'filing' && <section className="ui-card p-4"><h3 className="ui-t-sec mb-3">E-Filing Details</h3><div className="grid grid-cols-1 gap-3 md:grid-cols-3">{[['Responsible Person', 'responsiblePersonName'], ['Designation', 'responsiblePersonDesignation'], ['PAN', 'responsiblePersonPan'], ['Email', 'responsiblePersonEmail'], ['Phone', 'responsiblePersonPhone']].map(([label, key]) => <Field key={key} label={label}><input className="ui-input w-full" value={form[key]} onChange={(e) => changeForm({ [key]: e.target.value })} /></Field>)}</div></section>}
 
-      {/* 3 — the controlled master, stated. */}
-      <Section
-        title="TDS Natures / Rules"
-        description="The Rule Master's current answers — versioned, effective-dated, read-only. Rates and thresholds are never typed anywhere in the product."
-      >
-        <div className="ui-table-scroll">
-          <table className="ui-table">
-            <thead>
-              <tr>
-                <th scope="col">Nature</th>
-                {/* The stable identity everything stores — shown so an
-                    administrator reading an export can tie it back. */}
-                <th scope="col">Internal Code</th>
-                <th scope="col">Reference in force</th>
-                <th scope="col" className="text-end">Rate</th>
-                <th scope="col">Rule version</th>
-                <th scope="col">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {TDS_NATURES.map((n) => {
-                const rule = resolveRule(n.code, todayIso());
-                return (
-                  <tr key={n.code}>
-                    <td className="truncate">{n.name}</td>
-                    <td className="ui-mono truncate">{n.code}</td>
-                    <td className="ui-mono">{ruleReference(rule) || '—'}</td>
-                    <td className="ui-money">{Number(rule?.rate ?? 0)}%</td>
-                    <td className="ui-mono">{rule?.id || '—'}</td>
-                    <td><StatusPill status={n.active === false ? 'Inactive' : 'Active'} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Section>
-
-      {/* 4 — which ledgers accumulate which natures. */}
-      <Section
-        title="Ledger Mapping"
-        description="Ledgers under TDS Payable and TDS Receivable, and the nature each accumulates. Mapping is edited on the ledger itself — Chart of Accounts → the ledger → TDS Mapping."
-        actions={
-          onOpenChart ? (
-            <button type="button" onClick={onOpenChart} className="ui-btn ui-btn-secondary ui-btn-sm">
-              <ExternalLink size={14} aria-hidden="true" /> Open Chart of Accounts
-            </button>
-          ) : null
-        }
-      >
-        {unmapped.length ? (
-          <p className="ui-caption mb-2 text-[rgb(var(--neg-ink))]">
-            No ledger is mapped to {unmapped.map((u) => u.natureName).join(', ')} — deductions under it cannot post.
-          </p>
-        ) : null}
-        {tdsLedgers.length === 0 ? (
-          <p className="ui-caption">No TDS ledgers yet. Create them under Others → New Ledger, filed under TDS Payable or TDS Receivable.</p>
-        ) : (
-          <div className="ui-table-scroll">
-            <table className="ui-table">
-              <thead>
-                <tr>
-                  <th scope="col">Ledger</th>
-                  <th scope="col">Side</th>
-                  <th scope="col">Nature</th>
-                  <th scope="col">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tdsLedgers.map((l) => (
-                  <tr key={l.id}>
-                    <td className="truncate">{l.name}</td>
-                    <td>{l.side === 'RECEIVABLE' ? 'Receivable' : 'Payable'}</td>
-                    <td className="truncate">
-                      {TDS_NATURES.find((n) => n.code === String(l.tdsNatureCode || '').toUpperCase())?.name || l.tdsNatureCode || '—'}
-                    </td>
-                    <td><StatusPill status={l.isActive === false ? 'Inactive' : 'Active'} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
-
-      {/* 5 — who deductions default from and to. */}
-      <Section
-        title="Party Defaults"
-        description="Vendors and customers carrying TDS defaults. Defaults are edited on the party master; the engine reads them at each transaction."
-        actions={
-          <div className="flex items-center gap-2">
-            {onOpenVendors ? (
-              <button type="button" onClick={onOpenVendors} className="ui-btn ui-btn-secondary ui-btn-sm">Vendors</button>
-            ) : null}
-            {onOpenCustomers ? (
-              <button type="button" onClick={onOpenCustomers} className="ui-btn ui-btn-secondary ui-btn-sm">Customers</button>
-            ) : null}
-          </div>
-        }
-      >
-        {panMissing ? (
-          <p className="ui-caption mb-2 text-[rgb(var(--neg-ink))]">
-            {panMissing} TDS-applicable part{panMissing === 1 ? 'y has' : 'ies have'} no PAN — deduction runs at 20% and the return cannot be filed.
-          </p>
-        ) : null}
-        {parties.length === 0 ? (
-          <p className="ui-caption">No party carries TDS defaults yet. Set them on the vendor or customer master.</p>
-        ) : (
-          <div className="ui-table-scroll">
-            <table className="ui-table">
-              <thead>
-                <tr>
-                  <th scope="col">Party</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">PAN</th>
-                  <th scope="col">Default nature</th>
-                  <th scope="col">TDS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {parties.map((p, i) => (
-                  <tr key={`${p.kind}-${p.name}-${i}`}>
-                    <td className="truncate">{p.name || '—'}</td>
-                    <td>{p.kind}</td>
-                    <td className="ui-mono">{p.pan || '—'}</td>
-                    <td className="truncate">{TDS_NATURES.find((n) => n.code === p.nature.toUpperCase())?.name || p.nature || '—'}</td>
-                    <td><StatusPill status={p.applicable ? 'Applicable' : 'Not applicable'} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
-    </div>
-  );
-};
-
-export default TdsSettings;
+    {drawer && <><button type="button" className="settings-drawer-backdrop" aria-label="Close TDS section" onClick={() => setDrawer(null)} /><form className="settings-side-drawer branch-editor-form space-y-3" onSubmit={saveDrawer}><div className="settings-drawer-heading flex items-center justify-between"><div><div className="ui-t-sec">{drawer.index == null ? 'Add TDS Section' : 'Edit TDS Section'}</div><div className="ui-caption">Rate, threshold and ledger mapping</div></div><button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setDrawer(null)}>Close</button></div>
+      <div className="branch-editor-section grid grid-cols-2 gap-3"><Field label="Section *"><input className="ui-input w-full uppercase" value={drawer.draft.code} readOnly={drawer.index != null && !drawer.draft.custom} onChange={(e) => setDrawer((x) => ({ ...x, draft: { ...x.draft, code: e.target.value } }))} /></Field><Field label="Applicable To *"><select className="ui-select w-full" value={drawer.draft.applicableTo} onChange={(e) => setDrawer((x) => ({ ...x, draft: { ...x.draft, applicableTo: e.target.value } }))}><option>Vendor</option><option>Customer</option></select></Field><Field label="Description *" className="col-span-2"><input className="ui-input w-full" value={drawer.draft.name} onChange={(e) => setDrawer((x) => ({ ...x, draft: { ...x.draft, name: e.target.value, nature: e.target.value } }))} /></Field><Field label="Nature of Payment" className="col-span-2"><input className="ui-input w-full" value={drawer.draft.nature} onChange={(e) => setDrawer((x) => ({ ...x, draft: { ...x.draft, nature: e.target.value } }))} /></Field><Field label="Rate (%) *"><input type="number" min="0" max="100" step="0.01" className="ui-input w-full" value={drawer.draft.rate} onChange={(e) => setDrawer((x) => ({ ...x, draft: { ...x.draft, rate: e.target.value } }))} /></Field><Field label="Threshold Limit (₹)"><input type="number" min="0" className="ui-input w-full" value={drawer.draft.threshold} onChange={(e) => setDrawer((x) => ({ ...x, draft: { ...x.draft, threshold: e.target.value } }))} /></Field></div>
+      <div className="branch-editor-section grid grid-cols-2 gap-3"><div className="branch-editor-section-title col-span-2">Applicability</div><Field label="Deductee Type"><select className="ui-select w-full" value={drawer.draft.deducteeType} onChange={(e) => setDrawer((x) => ({ ...x, draft: { ...x.draft, deducteeType: e.target.value } }))}><option>All</option><option>Company / Firm</option><option>Individual / HUF</option></select></Field><Field label="Lower / Nil Deduction"><select className="ui-select w-full" value={drawer.draft.lowerDeduction} onChange={(e) => setDrawer((x) => ({ ...x, draft: { ...x.draft, lowerDeduction: e.target.value } }))}><option>As per certificate</option><option>Not allowed</option></select></Field><label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" className="ui-checkbox" checked={drawer.draft.allowOverride} onChange={(e) => setDrawer((x) => ({ ...x, draft: { ...x.draft, allowOverride: e.target.checked } }))} /> Allow override in transactions</label></div>
+      <div className="branch-editor-section"><Field label="TDS Receivable Ledger"><select className="ui-select w-full" value={drawer.draft.linkedLedgerId} onChange={(e) => setDrawer((x) => ({ ...x, draft: { ...x.draft, linkedLedgerId: e.target.value } }))}><option value="">Not linked</option>{receivable.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field></div><div className="flex justify-end gap-2"><button type="button" className="ui-btn ui-btn-secondary" onClick={() => setDrawer(null)}>Cancel</button><button type="submit" className="ui-btn ui-btn-primary">Save</button></div></form></>}
+  </div>;
+}
