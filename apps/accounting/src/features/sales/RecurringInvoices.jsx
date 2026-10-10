@@ -987,7 +987,7 @@ export default function RecurringInvoices({ db, setDb, currentCompany, onNavigat
         </>
       }
       tip={{
-        storageKey: 'neev.tip.recurringSchedules',
+        storageKey: 'clor.tip.recurringSchedules',
         text: 'A schedule bills its period once. Pressing Run now twice cannot raise the same month again.',
         Icon: RefreshCw,
       }}

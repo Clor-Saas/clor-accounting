@@ -147,7 +147,7 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           rsync -az --delete -e "ssh -i ~/.ssh/deploy -o BatchMode=yes" \
-            dist/ "ubuntu@$DEPLOY_HOST:/opt/neev/web/"
+            dist/ "ubuntu@$DEPLOY_HOST:/opt/clor/web/"
 
       - name: Upload API, migrate and restart
         env:
@@ -156,19 +156,19 @@ jobs:
           rsync -az --delete \
             --exclude node_modules --exclude 'prisma/*.db' --exclude dist \
             -e "ssh -i ~/.ssh/deploy -o BatchMode=yes" \
-            server/ "ubuntu@$DEPLOY_HOST:/opt/neev/server/"
+            server/ "ubuntu@$DEPLOY_HOST:/opt/clor/server/"
           ssh -i ~/.ssh/deploy -o BatchMode=yes "ubuntu@$DEPLOY_HOST" 'set -e
-            cd /opt/neev/server
-            set -a; . /opt/neev/.env; set +a
+            cd /opt/clor/server
+            set -a; . /opt/clor/.env; set +a
             # A dump before anything is installed or migrated. A backup taken
             # after a migration is a backup of the problem. As the postgres
             # superuser: every tenant table FORCEs row-level security, so
             # pg_dump as the owner refuses rather than dumping half a table.
-            mkdir -p /opt/neev/backups
-            sudo -u postgres pg_dump -d neevone \
-              | gzip > "/opt/neev/backups/neevone-ci-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
-            ls -1t /opt/neev/backups/neevone-*.sql.gz | tail -n +15 | xargs -r rm --
-            # --include=dev explicitly: /opt/neev/.env sets NODE_ENV=production,
+            mkdir -p /opt/clor/backups
+            sudo -u postgres pg_dump -d clor \
+              | gzip > "/opt/clor/backups/clor-ci-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+            ls -1t /opt/clor/backups/clor-*.sql.gz | tail -n +15 | xargs -r rm --
+            # --include=dev explicitly: /opt/clor/.env sets NODE_ENV=production,
             # which makes npm skip devDependencies — and tsc lives there, so the
             # build fails with "tsc: not found".
             npm ci --include=dev --no-audit --no-fund
@@ -195,7 +195,7 @@ jobs:
             # screen rather than a failed deploy.
             node scripts/provisionAppRole.mjs
             npm run build
-            sudo systemctl restart neev-api'
+            sudo systemctl restart clor-api'
 
       - name: Check the site is still answering
         env:

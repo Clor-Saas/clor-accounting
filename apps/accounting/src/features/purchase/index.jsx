@@ -1639,7 +1639,7 @@ export const PurchaseOrdersList = ({
       statusCounts={poStatusCounts}
       onStatusChange={setPoStatus}
       tip={{
-        storageKey: 'neev.tip.purchaseOrders',
+        storageKey: 'clor.tip.purchaseOrders',
         Icon: ShoppingCart,
         text: 'An order closes itself when a bill names it — nothing here has to be ticked off by hand.',
       }}
@@ -3042,7 +3042,7 @@ const billStatusReason = (doc, status, company, nowMs) => {
         setPage(1);
       }}
       tip={{
-        storageKey: 'neev:tip:recurringBills',
+        storageKey: 'clor:tip:recurringBills',
         Icon: RefreshCw,
         text: 'Bills that repeat every month — rent, AMC, subscriptions — can be scheduled rather than retyped.',
         actionLabel: 'Set one up',
@@ -4545,7 +4545,7 @@ export const DebitNotesList = ({ db, setDb, openModal, currentCompany, onNewDebi
       statusCounts={dnStatusCounts}
       onStatusChange={setDnStatus}
       tip={{
-        storageKey: 'neev.tip.debitNotes',
+        storageKey: 'clor.tip.debitNotes',
         Icon: NotebookPen,
         text: 'A debit note on account is money the vendor owes you until it is knocked off a bill — the row says how much is left.',
       }}

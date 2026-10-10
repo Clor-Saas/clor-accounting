@@ -20,7 +20,7 @@ in `docs/COMPANY-DATA-EXPORT.md`.
 
 On 10 September 2026 the production box had **no backups of any kind**:
 
-- the live database is `/opt/neev/data/prod.db`,
+- the live database is `/opt/clor/data/prod.db`,
 - there were no archives anywhere on the host,
 - there was no cron entry, for the deploy user or for root,
 - and `deploy/backup.sh` backed up a **Docker volume** — production runs the API
@@ -76,25 +76,25 @@ failure the whole exercise exists to prevent, so it now refuses and cleans up.
 Not done from here — it changes the server.
 
 **These run on the production host, not on your machine.** Run locally they fail
-with `no database at /opt/neev/data/prod.db`, because that path only exists on
+with `no database at /opt/clor/data/prod.db`, because that path only exists on
 the server. Copy the script up and install it over ssh:
 
 ```bash
-scp deploy/backup.sh neevone:/tmp/neev-backup
-ssh neevone 'sudo mv /tmp/neev-backup /usr/local/bin/neev-backup \
-  && sudo chmod +x /usr/local/bin/neev-backup \
+scp deploy/backup.sh clor:/tmp/clor-backup
+ssh clor 'sudo mv /tmp/clor-backup /usr/local/bin/clor-backup \
+  && sudo chmod +x /usr/local/bin/clor-backup \
   && sudo apt-get install -y sqlite3 \
-  && sudo /usr/local/bin/neev-backup --verify'
+  && sudo /usr/local/bin/clor-backup --verify'
 ```
 
 Only once that prints row counts and `verified:` is it worth scheduling:
 
 ```bash
-ssh neevone '( crontab -l 2>/dev/null; echo "30 2 * * * /usr/local/bin/neev-backup --verify >> /var/log/neev-backup.log 2>&1" ) | crontab -'
+ssh clor '( crontab -l 2>/dev/null; echo "30 2 * * * /usr/local/bin/clor-backup --verify >> /var/log/clor-backup.log 2>&1" ) | crontab -'
 ```
 
 To take a backup of a database somewhere else — a copy on your own machine, say
-— point it at one: `NEEV_DB=/path/to.db NEEV_BACKUP_DIR=/tmp/bk ./backup.sh --verify`.
+— point it at one: `CLOR_DB=/path/to.db CLOR_BACKUP_DIR=/tmp/bk ./backup.sh --verify`.
 
 ## Still missing, and it matters
 

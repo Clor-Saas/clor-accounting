@@ -1,4 +1,4 @@
-# Neev One — business logic, accounting workflow and data consistency audit
+# Clor — business logic, accounting workflow and data consistency audit
 
 **Baseline** `d3069f0` · **Date** 18 Sep 2026 · **Phase 1 — audit only, nothing fixed**
 
@@ -17,7 +17,7 @@ starting value (13,843,616).
 
 ## 1. Current architecture
 
-Neev One keeps **two books, not one**, and that single fact explains most of
+Clor keeps **two books, not one**, and that single fact explains most of
 the findings below.
 
 **The server book** (`server/`, Prisma, SQLite) holds `Invoice`, `Bill`,

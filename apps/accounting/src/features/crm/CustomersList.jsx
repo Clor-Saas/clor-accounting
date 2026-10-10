@@ -244,7 +244,7 @@ export default function CustomersList({ db, setDb, currentCompany, onNewTransact
       statusCounts={custStatusCounts}
       onStatusChange={setCustStatus}
       tip={{
-        storageKey: 'neev.tip.customers',
+        storageKey: 'clor.tip.customers',
         text: 'Outstanding and overdue are read off the invoices themselves — there is no balance to keep up to date.',
         Icon: Users,
       }}

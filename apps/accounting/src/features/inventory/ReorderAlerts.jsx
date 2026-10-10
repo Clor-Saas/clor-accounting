@@ -224,7 +224,7 @@ export default function ReorderAlerts({ db, setDb, currentCompany }) {
       statusCounts={raCounts}
       onStatusChange={setRaFilter}
       tip={{
-        storageKey: 'neev.tip.reorderAlerts',
+        storageKey: 'clor.tip.reorderAlerts',
         Icon: PackageSearch,
         text: 'An item appears here once it has a reorder level and stock has fallen to it — set the level on the item itself.',
       }}

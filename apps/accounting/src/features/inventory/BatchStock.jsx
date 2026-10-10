@@ -134,7 +134,7 @@ export default function BatchStock({ db, currentCompany }) {
       statusCounts={batchCounts}
       onStatusChange={setFilter}
       tip={{
-        storageKey: 'neev.tip.batchStock',
+        storageKey: 'clor.tip.batchStock',
         Icon: Boxes,
         text: 'Nothing here is stored — every row is worked out from the bill that brought the batch in and the invoices that took it out.',
       }}

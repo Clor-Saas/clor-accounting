@@ -13,7 +13,7 @@ import { PrismaClient } from '../generated/payroll/index.js';
  * own server on its own schedule — which is what payroll data usually needs —
  * without touching an accounting query.
  *
- * Payroll still posts to Neev's one general ledger. It does that through the
+ * Payroll still posts to Clor's one general ledger. It does that through the
  * accounting service, never by writing a journal row itself.
  *
  * The cost, stated plainly: a transaction cannot span both databases. Anything

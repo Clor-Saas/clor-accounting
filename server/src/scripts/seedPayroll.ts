@@ -60,7 +60,7 @@ const assertNotProduction = () => {
 
 /* ------------------------------------------------------------------- data */
 
-const OWNER = { email: 'ui-qa@neevone.local', password: 'UiQaPassw0rd!23' };
+const OWNER = { email: 'ui-qa@clor.local', password: 'UiQaPassw0rd!23' };
 
 /** Enough people for the screens to have something to sort and group. */
 const PEOPLE: Array<[name: string, designation: string, department: string, annualCtc: number]> = [

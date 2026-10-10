@@ -7,7 +7,7 @@ cd server && npm run seed:ui-qa
 ```
 
 Idempotent. Refuses to run unless the database looks local — see the guard in
-`seedUiQa.ts`. Sign in with `ui-qa@neevone.local` / `UiQaPassw0rd!23`.
+`seedUiQa.ts`. Sign in with `ui-qa@clor.local` / `UiQaPassw0rd!23`.
 
 ## Theme — set it explicitly, always
 

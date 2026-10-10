@@ -346,7 +346,7 @@ export default function PriceLists({ db, setDb, currentCompany }) {
           setPage(1);
         }}
         tip={{
-          storageKey: 'neev.tip.priceLists',
+          storageKey: 'clor.tip.priceLists',
           Icon: Tags,
           text: 'A list with no rates on it prices nothing — the invoice falls back to the item’s own price and says nothing about it.',
         }}

@@ -151,7 +151,7 @@ export const InvoicesList = ({
   const [moreOpen, setMoreOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [tipDismissed, setTipDismissed] = useState(
-    () => localStorage.getItem('neev:tip:recurringInvoices') === 'dismissed'
+    () => localStorage.getItem('clor:tip:recurringInvoices') === 'dismissed'
   );
   /**
    * A period is chosen far more often than it is typed. "This month" and "last
@@ -1403,7 +1403,7 @@ const statusReason = (doc, status, company, nowMs) => {
           <button
             type="button"
             onClick={() => {
-              localStorage.setItem('neev:tip:recurringInvoices', 'dismissed');
+              localStorage.setItem('clor:tip:recurringInvoices', 'dismissed');
               setTipDismissed(true);
             }}
             className="ui-btn ui-btn-ghost ui-btn-sm ms-auto"
@@ -2115,7 +2115,7 @@ export const EstimatesList = ({
       statusCounts={estStatusCounts}
       onStatusChange={setEstStatus}
       tip={{
-        storageKey: 'neev.tip.quotations',
+        storageKey: 'clor.tip.quotations',
         text: 'A quotation the customer accepts becomes an invoice without being typed twice — the row menu converts it.',
         Icon: ClipboardList,
       }}
@@ -2610,7 +2610,7 @@ export const CreditNotesList = ({
       statusCounts={cnStatusCounts}
       onStatusChange={setCnStatus}
       tip={{
-        storageKey: 'neev.tip.creditNotes',
+        storageKey: 'clor.tip.creditNotes',
         text: 'A credit raised on account is the customer’s money until it is knocked off an invoice — the row says how much is left.',
         Icon: Receipt,
       }}

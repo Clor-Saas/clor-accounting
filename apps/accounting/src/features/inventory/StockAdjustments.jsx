@@ -702,7 +702,7 @@ const StockAdjustments = ({
       statusCounts={adjCounts}
       onStatusChange={setAdjFilter}
       tip={{
-        storageKey: 'neev.tip.stockAdjustments',
+        storageKey: 'clor.tip.stockAdjustments',
         Icon: ClipboardList,
         text: 'An adjustment is a posting, not a note — removing one puts the stock it moved back.',
       }}

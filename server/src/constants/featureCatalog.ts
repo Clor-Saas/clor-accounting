@@ -375,7 +375,7 @@ export const FEATURE_CATALOG: FeatureDef[] = [
     key: 'payroll',
     label: 'Payroll',
     description:
-      'Pay salaries from Neev: salary structures, a monthly pay run you can check before you approve it, payslips, and the journal it posts to your books.',
+      'Pay salaries from Clor: salary structures, a monthly pay run you can check before you approve it, payslips, and the journal it posts to your books.',
     defaultEnabled: false,
     category: 'Payroll',
   },

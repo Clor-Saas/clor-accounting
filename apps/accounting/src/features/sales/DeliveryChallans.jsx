@@ -545,7 +545,7 @@ export default function DeliveryChallans({ db, setDb, currentCompany, onConvert 
       statusCounts={dcStatusCounts}
       onStatusChange={setDcStatus}
       tip={{
-        storageKey: 'neev.tip.deliveryChallans',
+        storageKey: 'clor.tip.deliveryChallans',
         text: 'Goods that left on a challan are still yours to bill — "Out, not billed" is the list to work through.',
         Icon: Truck,
       }}

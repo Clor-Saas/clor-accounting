@@ -63,7 +63,7 @@ beforeAll(async () => {
 describe('exporting a company', () => {
   it('returns the company’s own records', async () => {
     const res = await request(app).get(`/api/orgs/${mine.orgId}/export`).set(auth(mine)).expect(200);
-    expect(res.body.export.format).toBe('neev-one/company-export');
+    expect(res.body.export.format).toBe('clor/company-export');
     expect(res.body.export.company.id).toBe(mine.orgId);
     expect(res.body.data.invoices.length).toBeGreaterThan(0);
     expect(res.body.data.invoices[0].customerName).toBe('My Customer');

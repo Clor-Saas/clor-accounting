@@ -16,9 +16,9 @@
  * ---------------------------------------------------------------------------
  * Targeting is explicit, always.
  *
- * `/opt/neev/server/.env` on the production host still says
+ * `/opt/clor/server/.env` on the production host still says
  * `DATABASE_URL="file:./dev.db"`. The API never reads it — systemd supplies
- * the real value through `EnvironmentFile=/opt/neev/.env`, and `dotenv` does
+ * the real value through `EnvironmentFile=/opt/clor/.env`, and `dotenv` does
  * not overwrite what is already set. A maintenance command run by hand in that
  * directory has no such protection: Prisma finds the stale file and silently
  * works on a database that is not the books. It is the kind of mistake that
@@ -30,11 +30,11 @@
  * ---------------------------------------------------------------------------
  *
  *   # look only
- *   npx tsx src/scripts/reconcileSettlement.ts --database-url=file:/opt/neev/data/prod.db
+ *   npx tsx src/scripts/reconcileSettlement.ts --database-url=file:/opt/clor/data/prod.db
  *
  *   # write, having read the dry run and agreed with its row count
  *   npx tsx src/scripts/reconcileSettlement.ts \
- *       --database-url=file:/opt/neev/data/prod.db --apply --expect-rows=2
+ *       --database-url=file:/opt/clor/data/prod.db --apply --expect-rows=2
  */
 import { statSync } from 'node:fs';
 
@@ -70,7 +70,7 @@ async function main() {
   // 1. The target, named explicitly and proved before anything else happens.
   // -------------------------------------------------------------------------
   const url = arg('database-url') || process.env.RECONCILE_DATABASE_URL || '';
-  if (!url) fail('name the database: --database-url=file:/opt/neev/data/prod.db');
+  if (!url) fail('name the database: --database-url=file:/opt/clor/data/prod.db');
   if (!url.startsWith('file:/') || url.startsWith('file:./') || url.startsWith('file:../')) {
     fail(`the database must be an absolute file: URL, not "${url}"`);
   }

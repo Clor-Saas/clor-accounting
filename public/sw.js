@@ -5,7 +5,7 @@
  * win here is instant repeat loads of the app shell's JS/CSS, offline
  * tolerance for assets already seen, and installability.
  */
-const CACHE = 'neev-static-v1';
+const CACHE = 'clor-static-v1';
 
 /**
  * How many built files this cache may hold.

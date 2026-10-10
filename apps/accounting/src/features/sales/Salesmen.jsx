@@ -203,7 +203,7 @@ export default function Salesmen({ db, setDb, currentCompany }) {
       statusCounts={smStatusCounts}
       onStatusChange={setSmStatus}
       tip={{
-        storageKey: 'neev.tip.salesmen',
+        storageKey: 'clor.tip.salesmen',
         text: 'Commission is worked out on pre-GST sales — paying it on tax collected for the government would pay for money that was never yours.',
         Icon: BadgeIndianRupee,
       }}

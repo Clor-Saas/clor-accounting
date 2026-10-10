@@ -219,7 +219,7 @@ export default function AccountOverview({ currentCompany, onOpenCompany = null }
                 <div key={c.orgId} className="flex items-center gap-3 px-4 py-2.5">
                   <div className="min-w-0 flex-1 text-sm">{c.name}</div>
                   <div className="ui-mono ui-caption ui-muted">
-                    {c.slug ? `${c.slug}.neevone.com` : 'no handle yet'}
+                    {c.slug ? `${c.slug}.clor.in` : 'no handle yet'}
                   </div>
                 </div>
               ))}

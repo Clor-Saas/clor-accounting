@@ -5,7 +5,7 @@
 # deployment that did not exist. It first backed up a Docker volume on a box
 # that runs systemd, and then three SQLite files on a box that now runs
 # PostgreSQL — so on 25 Sep 2026 the nightly job was pointed at
-# /opt/neev/data/prod.db, which had been migrated away an hour earlier. A
+# /opt/clor/data/prod.db, which had been migrated away an hour earlier. A
 # backup script that names the wrong source does not fail loudly; it writes
 # something, every night, that nobody looks at until the day it matters.
 #
@@ -14,9 +14,9 @@
 #   ./backup.sh --restore FILE DB   # restore an archive into a NEW database
 #
 # Install (on the server, once):
-#   sudo cp deploy/backup.sh /usr/local/bin/neev-backup
-#   sudo chmod +x /usr/local/bin/neev-backup
-#   ( crontab -l 2>/dev/null; echo "30 2 * * * /usr/local/bin/neev-backup --verify >> /var/log/neev-backup.log 2>&1" ) | crontab -
+#   sudo cp deploy/backup.sh /usr/local/bin/clor-backup
+#   sudo chmod +x /usr/local/bin/clor-backup
+#   ( crontab -l 2>/dev/null; echo "30 2 * * * /usr/local/bin/clor-backup --verify >> /var/log/clor-backup.log 2>&1" ) | crontab -
 set -euo pipefail
 
 # ## Why this runs as the postgres superuser and nothing else will do
@@ -35,9 +35,9 @@ set -euo pipefail
 # quietly back up nothing at all, which is why it appears nowhere here.
 PG=(sudo -u postgres)
 
-DB_NAME="${NEEV_DB_NAME:-neevone}"
-DEST="${NEEV_BACKUP_DIR:-/var/backups/neev-one}"
-KEEP="${NEEV_BACKUP_KEEP:-30}"
+DB_NAME="${CLOR_DB_NAME:-clor}"
+DEST="${CLOR_BACKUP_DIR:-/var/backups/clor}"
+KEEP="${CLOR_BACKUP_KEEP:-30}"
 
 die() { echo "backup: $*" >&2; exit 1; }
 
@@ -70,7 +70,7 @@ fi
 # ----------------------------------------------------------------- backup
 mkdir -p "$DEST"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-ARCHIVE="$DEST/neev-one-$STAMP.sql.gz"
+ARCHIVE="$DEST/clor-$STAMP.sql.gz"
 
 # One dump of one database: every application's schema, consistent to the same
 # instant. That consistency is the reason the apps share a database — three
@@ -128,5 +128,5 @@ if [ "${1:-}" = "--verify" ]; then
   echo "verified: $ARCHIVE restores and matches the live row counts"
 fi
 
-ls -1t "$DEST"/neev-one-*.sql.gz 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm --
+ls -1t "$DEST"/clor-*.sql.gz 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm --
 echo "backup written: $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"

@@ -54,7 +54,7 @@ CASES = [
      "Confirmed on /assets/index-BbslsMIS.js (1.6 MB). Bundle size is worth splitting later."),
     ("Public site", "Landing page renders with no console errors",
      "Open the site, read the console", "No errors", "Pass",
-     "Console clean. Title 'Neev One — GST accounting'; hero, trial-balance sample and both calls to action present."),
+     "Console clean. Title 'Clor — GST accounting'; hero, trial-balance sample and both calls to action present."),
     ("Public site", "Theme toggle works and is remembered",
      "Press the theme button, reload", "Light/dark switches and persists", "Pass",
      "data-theme flips dark→light, body ground becomes rgb(250,250,249), uiTheme stored in localStorage."),
@@ -262,7 +262,7 @@ CASES = [
     # ---------- 12. Resilience ----------
     ("Resilience", "Production database is backed up nightly",
      "Inspect cron and the backup directory", "A verified archive per night", "Pass",
-     "Cron at 02:30 runs neev-backup --verify. A fresh archive was taken during this pass and verified against live row "
+     "Cron at 02:30 runs clor-backup --verify. A fresh archive was taken during this pass and verified against live row "
      "counts (7 accounts, 6 orgs, 8 invoices, 15 journal entries)."),
     ("Resilience", "A backup actually restores",
      "Restore the archive into a scratch database", "Integrity check passes, row counts match", "Pass",
@@ -273,7 +273,7 @@ CASES = [
      "Deploy ran preflight ('safe to deploy'), then migrations ('no pending migrations'), then the permission backfill."),
     ("Resilience", "The API comes back after a deploy",
      "Deploy, then check the service", "Service active, health 200", "Pass",
-     "neev-api active; /health returns 200 on the box; the site returns 200. The deploy script's own api probe reads 401 "
+     "clor-api active; /health returns 200 on the box; the site returns 200. The deploy script's own api probe reads 401 "
      "because it calls an authenticated route — worth changing so a real failure is not mistaken for that."),
 ]
 
@@ -283,7 +283,7 @@ def build():
     ws = wb.active
     ws.title = "Run 10 Sep 2026"
 
-    ws["A1"] = "Neev One — end-to-end test run"
+    ws["A1"] = "Clor — end-to-end test run"
     ws["A1"].font = Font(bold=True, size=15)
     ws["A2"] = f"Target: {SITE}   ·   Run: 10 Sep 2026   ·   Environment: production"
     ws["A2"].font = Font(size=10, color="6B7280")

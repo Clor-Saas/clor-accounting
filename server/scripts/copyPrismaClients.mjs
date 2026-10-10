@@ -14,7 +14,7 @@
  * build therefore succeeded, the tests passed (they run the TypeScript
  * directly through tsx) and the API died on its first import in production:
  *
- *   ERR_MODULE_NOT_FOUND  file:///opt/neev/server/dist/generated/payroll/index.js
+ *   ERR_MODULE_NOT_FOUND  file:///opt/clor/server/dist/generated/payroll/index.js
  *
  * A build that cannot start is a build that did not finish, so finishing it
  * is part of `npm run build` rather than a step in the deploy — the deploy is

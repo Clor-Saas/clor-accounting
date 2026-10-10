@@ -1,4 +1,4 @@
-# Neev One application audit — 10 September 2026
+# Clor application audit — 10 September 2026
 
 ## Executive verdict
 
@@ -175,12 +175,12 @@ This comparison uses official public product and pricing pages checked on 10 Sep
 
 ### Strategic snapshot
 
-| Product | Primary buyer | Core promise | Current pricing signal | Neev One lesson |
+| Product | Primary buyer | Core promise | Current pricing signal | Clor lesson |
 |---|---|---|---|---|
 | Zoho Books | Cloud-first SMB and finance team | Connected accounting, automation and direct compliance | Free tier; Standard ₹749/org/month annually; Professional ₹1,499; Premium ₹2,999 | Benchmark for cloud workflow completeness and onboarding |
 | TallyPrime | Accountant-led Indian business | Fast, familiar, locally controlled books | Silver ₹750/month or ₹22,500 lifetime; Gold ₹2,250/month or ₹67,500 lifetime | Benchmark for keyboard speed, offline ownership and accounting trust |
 | Vyapar | Micro/small retailer and owner-operator | Simple billing, inventory and mobile/desktop utility | Desktop + mobile Silver ₹3,999/year; Gold ₹4,299/year on the checked India pricing page | Benchmark for fast first value, retail simplicity and price accessibility |
-| Neev One | Best potential: CA firms and multi-branch Indian SMEs | One precise, modern workspace across companies, branches and users | Not commercially defined | Do not fight all three broadly; own multi-company control and calm professional UX |
+| Clor | Best potential: CA firms and multi-branch Indian SMEs | One precise, modern workspace across companies, branches and users | Not commercially defined | Do not fight all three broadly; own multi-company control and calm professional UX |
 
 ### 1. Zoho Books teardown
 
@@ -195,14 +195,14 @@ This comparison uses official public product and pricing pages checked on 10 Sep
 
 Zoho favours discoverability over density. Navigation and forms are conventional, labelled and approachable for a business owner. That lowers onboarding cost, but the large feature surface creates settings depth, plan-gated complexity and more visual chrome than a full-time accountant necessarily wants.
 
-**Where Neev One can beat it**
+**Where Clor can beat it**
 
 - A genuinely better accountant/CA-firm cockpit across many companies. Zoho splits firm-level practice management from Books.
 - Faster dense-data entry with stronger keyboard behavior and less dashboard decoration.
 - Unlimited-user or branch-based packaging, if unit economics support it; Zoho charges per additional user and location.
 - Self-hosted/private-cloud positioning for firms that do not want their client books in a general SaaS suite.
 
-**What Neev One must copy before competing**
+**What Clor must copy before competing**
 
 Direct compliance workflows, customer portal/payment collection, durable recurring jobs, connected banking, attachment/document storage, mobile access, complete onboarding/migration, dependable backups, and a real billing/support operation.
 
@@ -220,14 +220,14 @@ Direct compliance workflows, customer portal/payment collection, durable recurri
 
 Tally optimises for repetition and expert throughput, not immediate learnability. It is functionally dense and highly consistent once learned, but its terminology, drill-down model and keyboard conventions can feel opaque to a new owner or occasional user.
 
-**Where Neev One can beat it**
+**Where Clor can beat it**
 
 - Modern browser access with a clearer visual hierarchy, richer contextual help and easier remote collaboration.
 - Native multi-company team administration with explicit branch/warehouse boundaries and field-level permissions.
 - Cleaner document creation for occasional users without sacrificing a keyboard path for accountants.
 - API-first integrations and easier deployment than desktop/LAN/cloud-access combinations.
 
-**What Neev One must copy before competing**
+**What Clor must copy before competing**
 
 Near-zero-latency voucher entry, reliable keyboard-only operation across every form, offline/degraded-mode clarity, immutable edit-log completeness, payroll depth, backup/restore confidence, migration tooling and a partner/CA enablement program.
 
@@ -245,20 +245,20 @@ Near-zero-latency voucher entry, reliable keyboard-only operation across every f
 
 Vyapar optimises for obvious actions and touch-friendly workflows. It is less rigorous and less scalable as a finance-control system than Zoho or Tally, but it speaks directly to the owner who wants to make a bill now rather than configure an accounting platform.
 
-**Where Neev One can beat it**
+**Where Clor can beat it**
 
 - Stronger ledger integrity, approvals, roles, audit trail, multi-currency and multi-company governance.
 - A calmer, more premium desktop workspace for finance teams and growing businesses.
 - Better separation of company, branch, warehouse and user authority.
 - More credible path from daily operations to reviewed financial statements.
 
-**What Neev One must copy before competing**
+**What Clor must copy before competing**
 
 A shorter onboarding path, stronger mobile/POS experience, thermal-print and barcode polish, UPI/payment sharing, WhatsApp delivery, obvious backup/restore controls and pricing that a small owner can decide on without a sales call.
 
 ### Feature comparison
 
-| Capability | Neev One | Zoho Books | TallyPrime | Vyapar |
+| Capability | Clor | Zoho Books | TallyPrime | Vyapar |
 |---|---|---|---|---|
 | Double-entry accounting | Strong core | Mature | Mature | Available, plan/product dependent |
 | GST reports | Partial-to-strong exports | Direct filing and broad return coverage | Deep compliance | Broad reports |
@@ -278,11 +278,11 @@ A shorter onboarding path, stronger mobile/POS experience, thermal-print and bar
 
 ### UI/UX comparison
 
-| Dimension | Best benchmark | Neev One position | Required move |
+| Dimension | Best benchmark | Clor position | Required move |
 |---|---|---|---|
 | First-time discoverability | Vyapar / Zoho | Attractive landing and signup, but product depth appears quickly | Guided first invoice, imported opening data and checklist with real progress |
 | Expert entry speed | TallyPrime | Good keyboard primitives, inconsistent coverage | Measure invoice/journal entry time and eliminate mouse-only breaks |
-| Visual coherence | Neev One potential | Strong design contract; monolith makes compliance fragile | Finish PageShell/DataTable/EntryForm adoption and route-level extraction |
+| Visual coherence | Clor potential | Strong design contract; monolith makes compliance fragile | Finish PageShell/DataTable/EntryForm adoption and route-level extraction |
 | Cross-device continuity | Zoho | Additive local/server hydration is not trustworthy sync | Server-only authority with explicit offline queue/conflict behavior |
 | Mobile retail use | Vyapar | Not competitive | Purpose-built invoice/POS mobile surface, not merely responsive desktop |
 | Multi-client oversight | Market opening | Architecture is promising; discovery bug blocks it | Fix foreign memberships, then make account overview the flagship workflow |
@@ -290,7 +290,7 @@ A shorter onboarding path, stronger mobile/POS experience, thermal-print and bar
 
 ### Recommended positioning
 
-Do **not** position Neev One as “another GST accounting app.” That comparison makes it lose to Zoho on connected SaaS breadth, Tally on accountant trust/speed, and Vyapar on simplicity/price.
+Do **not** position Clor as “another GST accounting app.” That comparison makes it lose to Zoho on connected SaaS breadth, Tally on accountant trust/speed, and Vyapar on simplicity/price.
 
 The defensible position is:
 

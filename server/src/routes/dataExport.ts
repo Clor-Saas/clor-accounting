@@ -204,7 +204,7 @@ dataExportRouter.get('/orgs/:orgId/export', EXPORT, async (req, res) => {
      * on a shared drive in two years' time has to explain itself.
      */
     export: {
-      format: 'neev-one/company-export',
+      format: 'clor/company-export',
       version: 1,
       scope: asked,
       company: { id: org.id, name: org.name, handle: org.slug || null },

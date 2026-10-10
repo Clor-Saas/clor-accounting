@@ -1,4 +1,4 @@
-# Neev One — Full Application Audit
+# Clor — Full Application Audit
 
 **Date:** 19 Aug 2026 · **Auditor:** Accio · **Scope:** full repo (`src/`, `server/`, `deploy/`, `docs/`, build & test pipeline)
 **Method:** static code review of security-critical paths, live verification of build/test/lint, repo-hygiene checks, targeted web research (competitors, India compliance), reconciliation against the project's own [REVIEW.md](docs/REVIEW.md) / [STATUS.md](docs/STATUS.md).
@@ -9,7 +9,7 @@
 
 **Verdict: a genuinely hardened prototype — not yet a production accounting product, but closer than the docs suggest.**
 
-This is a multi-tenant, India-GST cloud accounting platform (React 19 + Vite frontend; Express 4 + TypeScript + Prisma 5 backend; SQLite today, Postgres optional). The product name is **Neev One**.
+This is a multi-tenant, India-GST cloud accounting platform (React 19 + Vite frontend; Express 4 + TypeScript + Prisma 5 backend; SQLite today, Postgres optional). The product name is **Clor**.
 
 Three things stand out as **real strengths**:
 
@@ -229,11 +229,11 @@ Payroll/HRMS · automated bank feeds (Plaid/Yodlee/Salt Edge) · budgets vs actu
 | Marg ERP | Basic ~₹8,100/yr; Gold ~₹25,200/yr | Per company | Pharma/FMCG specialised |
 | Odoo Accounting | Standard ~$31/user/mo; Custom ~$61/user/mo | Per user | Global ERP, `l10n_in` for GST |
 | QuickBooks India | — | — | **Intuit exited India (2023)**; global SKU lacks native GST filing — a structural gap a new entrant can exploit |
-| **Neev One (this app)** | undecided; docs recommend flat per-branch | **Unlimited users per branch** | Differentiator: branch = access boundary |
+| **Clor (this app)** | undecided; docs recommend flat per-branch | **Unlimited users per branch** | Differentiator: branch = access boundary |
 
 ### 6.2 Feature matrix (2026 market standard vs this app)
 
-| Feature | Zoho | Tally | Vyapar | Busy | Neev One |
+| Feature | Zoho | Tally | Vyapar | Busy | Clor |
 |---|---:|---:|---:|---:|---:|
 | GST invoicing | ✔ | ✔ | ✔ | ✔ | ✔ |
 | GSTR-1/3B filing | ✔ Full | ✔ Full | JSON only | ✔ Full | **Partial (HSN gap)** |

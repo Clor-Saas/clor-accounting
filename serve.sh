@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Start Neev One and print the address it is reachable on.
+# Start Clor and print the address it is reachable on.
 #
 # The shared link kept breaking because it was a trycloudflare quick tunnel:
 # those get a new random hostname every time they start and drop on their own,
@@ -42,7 +42,7 @@ if lsof -nP -iTCP:"$API_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "API already running on $API_PORT."
 else
   echo "Starting API on $API_PORT…"
-  ( cd server && npm run dev >/tmp/neev-api.log 2>&1 & )
+  ( cd server && npm run dev >/tmp/clor-api.log 2>&1 & )
   for _ in $(seq 1 30); do
     is_up "http://127.0.0.1:$API_PORT/api/health" && break
     sleep 1
@@ -53,7 +53,7 @@ if lsof -nP -iTCP:"$APP_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "App already running on $APP_PORT."
 else
   echo "Starting app on $APP_PORT…"
-  npx vite preview --port "$APP_PORT" >/tmp/neev-app.log 2>&1 &
+  npx vite preview --port "$APP_PORT" >/tmp/clor-app.log 2>&1 &
   for _ in $(seq 1 30); do
     is_up "http://127.0.0.1:$APP_PORT/" && break
     sleep 1
@@ -63,7 +63,7 @@ fi
 IP="$(lan_ip || true)"
 
 echo
-echo "Neev One is running."
+echo "Clor is running."
 echo "  On this Mac:        http://localhost:$APP_PORT"
 if [ -n "$IP" ]; then
   echo "  On this network:    http://$IP:$APP_PORT"
@@ -73,4 +73,4 @@ if [ -n "$IP" ]; then
   echo "reserve one for it in the router to pin it for good."
 fi
 echo
-echo "Logs: /tmp/neev-api.log and /tmp/neev-app.log"
+echo "Logs: /tmp/clor-api.log and /tmp/clor-app.log"

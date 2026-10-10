@@ -122,7 +122,7 @@ it has no prerequisite beyond a screen to sit on.
 
 ### 6. Subdomain routing and custom domains
 
-**What.** `acme.neevone.com` resolving to that tenant, and later a customer's own
+**What.** `acme.clor.in` resolving to that tenant, and later a customer's own
 domain.
 
 **Why it is not built.** The slug exists and is generated; nothing resolves a

@@ -781,7 +781,7 @@ export default function SalesOrders({ db, setDb, currentCompany, onConvertToInvo
       statusCounts={soStatusCounts}
       onStatusChange={setSoStatus}
       tip={{
-        storageKey: 'neev.tip.salesOrders',
+        storageKey: 'clor.tip.salesOrders',
         text: 'Delivered and billed are counted from the challans and invoices raised against each order — never typed.',
         Icon: Truck,
       }}

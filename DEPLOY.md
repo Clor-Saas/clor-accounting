@@ -13,12 +13,12 @@ somebody following it would have taken backups of a volume that does not exist.
 
 | Piece | Where |
 | --- | --- |
-| Frontend (static) | `/opt/neev/web`, served by Caddy |
-| API | `/opt/neev/server`, `neev-api.service`, listening on 127.0.0.1:4001 |
-| Database | PostgreSQL 16, `neevone`, localhost only |
-| Environment | `/opt/neev/.env`, mode 600 |
-| Backups | `/var/backups/neev-one`, nightly at 02:30 |
-| Deploy log | `/opt/neev/deploy.log` |
+| Frontend (static) | `/opt/clor/web`, served by Caddy |
+| API | `/opt/clor/server`, `clor-api.service`, listening on 127.0.0.1:4001 |
+| Database | PostgreSQL 16, `clor`, localhost only |
+| Environment | `/opt/clor/.env`, mode 600 |
+| Backups | `/var/backups/clor`, nightly at 02:30 |
+| Deploy log | `/opt/clor/deploy.log` |
 
 One database, one schema per application — `accounting`, `payroll`, `people`.
 The boundary is the schema, not the server, so one `pg_dump` is consistent
@@ -63,10 +63,10 @@ and `pg_dump` as the owner fails outright rather than dumping half a table.
 
 ## Backups
 
-Installed on the server as `/usr/local/bin/neev-backup`, run by cron at 02:30:
+Installed on the server as `/usr/local/bin/clor-backup`, run by cron at 02:30:
 
 ```
-30 2 * * * /usr/local/bin/neev-backup --verify >> /var/log/neev-backup.log 2>&1
+30 2 * * * /usr/local/bin/clor-backup --verify >> /var/log/clor-backup.log 2>&1
 ```
 
 `--verify` restores the archive it has just written into a scratch database and
@@ -77,11 +77,11 @@ moment you can least afford to.
 Restoring is deliberately beside the live database, never over it:
 
 ```bash
-/usr/local/bin/neev-backup --restore /var/backups/neev-one/neev-one-<stamp>.sql.gz neevone_restored
+/usr/local/bin/clor-backup --restore /var/backups/clor/clor-<stamp>.sql.gz clor_restored
 # look at it, then swap:
-sudo -u postgres psql -c 'ALTER DATABASE neevone RENAME TO neevone_old'
-sudo -u postgres psql -c 'ALTER DATABASE neevone_restored RENAME TO neevone'
-sudo systemctl restart neev-api
+sudo -u postgres psql -c 'ALTER DATABASE clor RENAME TO clor_old'
+sudo -u postgres psql -c 'ALTER DATABASE clor_restored RENAME TO clor'
+sudo systemctl restart clor-api
 ```
 
 ## Schema changes
@@ -92,7 +92,7 @@ pre-deploy check against the live database — it names anything that would be
 lost and exits 1 when something really would be:
 
 ```bash
-ssh ubuntu@$HOST 'cd /opt/neev/server && set -a && . /opt/neev/.env && set +a && npx tsx scripts/preflight.ts'
+ssh ubuntu@$HOST 'cd /opt/clor/server && set -a && . /opt/clor/.env && set +a && npx tsx scripts/preflight.ts'
 ```
 
 ## A first-time setup, from nothing
@@ -100,17 +100,17 @@ ssh ubuntu@$HOST 'cd /opt/neev/server && set -a && . /opt/neev/.env && set +a &&
 ```bash
 sudo apt-get install -y postgresql postgresql-client
 sudo -u postgres psql -c "CREATE ROLE clor_owner LOGIN CREATEROLE PASSWORD '<owner password>'"
-sudo -u postgres psql -c "CREATE DATABASE neevone OWNER clor_owner"
+sudo -u postgres psql -c "CREATE DATABASE clor OWNER clor_owner"
 sudo -u postgres psql -c "GRANT SET ON PARAMETER session_replication_role TO clor_owner"
-sudo -u postgres psql -d neevone <<'SQL'
+sudo -u postgres psql -d clor <<'SQL'
 CREATE SCHEMA IF NOT EXISTS accounting AUTHORIZATION clor_owner;
 CREATE SCHEMA IF NOT EXISTS payroll    AUTHORIZATION clor_owner;
 CREATE SCHEMA IF NOT EXISTS people     AUTHORIZATION clor_owner;
-REVOKE ALL ON DATABASE neevone FROM PUBLIC;
+REVOKE ALL ON DATABASE clor FROM PUBLIC;
 SQL
 ```
 
-Then write `/opt/neev/.env` (mode 600) with `DATABASE_URL`,
+Then write `/opt/clor/.env` (mode 600) with `DATABASE_URL`,
 `PAYROLL_DATABASE_URL`, `PEOPLE_DATABASE_URL` — each with its own `?schema=` —
 plus `PGADMIN_URL`, `CLOR_APP_PASSWORD`, `CLOR_SCHEMAS` and `CLOR_DATABASES`,
 and run `./deploy.sh --api`. The application role is created by the deploy.

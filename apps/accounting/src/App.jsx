@@ -1771,7 +1771,7 @@ const ItemsList = ({ db, setDb, currentCompany, warehouses = [], branches = [], 
       statusCounts={itemStatusCounts}
       onStatusChange={setItemFilter}
       tip={{
-        storageKey: 'neev.tip.items',
+        storageKey: 'clor.tip.items',
         Icon: Package,
         text: 'An item without an HSN or SAC can still be sold — and the GST return that carries it is the one that comes back.',
       }}
@@ -2543,7 +2543,7 @@ const ChartOfAccounts = ({ db, setDb, openModal, currentCompany, onOpenLedger = 
         />
       }
       tip={{
-        storageKey: 'neev.tip.chartOfAccounts',
+        storageKey: 'clor.tip.chartOfAccounts',
         Icon: BookOpen,
         text: 'A ledger belongs to a group, and the group decides which statement it lands on — the chart is what makes the reports add up.',
       }}
@@ -7259,7 +7259,7 @@ const ItemCategoriesList = ({ db, setDb, currentCompany }) => {
         </>
       }
       tip={{
-        storageKey: 'neev.tip.itemCategories',
+        storageKey: 'clor.tip.itemCategories',
         Icon: Tags,
         text: 'A category typed straight onto an item is not in this master — and a discount rule matching on category will never see it.',
       }}

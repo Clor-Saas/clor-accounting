@@ -1,8 +1,8 @@
 // ============================================================================
-// Neev Payroll — its own database
+// Clor Payroll — its own database
 // ============================================================================
 //
-// Payroll is a separate application that happens to live inside Neev. It keeps
+// Payroll is a separate application that happens to live inside Clor. It keeps
 // its own database, generates its own client, and shares no table with the
 // accounting schema.
 //
@@ -15,14 +15,14 @@
 // a payroll dataset usually needs, and it can be moved onto its own server
 // later without touching a single accounting query.
 //
-// How it stays connected. Payroll holds Neev's identifiers — `accountId`,
+// How it stays connected. Payroll holds Clor's identifiers — `accountId`,
 // `orgId`, `branchId`, `ledgerAccountId`, `employeeId` — as plain strings, with
 // no cross-database foreign keys, because there is no such thing. Referential
 // integrity across the boundary is the application's job and is enforced where
 // the two meet: a payroll run posts through the accounting service, never by
 // writing a journal row itself.
 //
-// What this does NOT change: the ledger. Payroll still posts into Neev's own
+// What this does NOT change: the ledger. Payroll still posts into Clor's own
 // general ledger through `postEntry`. There is one set of books, and payroll is
 // one more thing that writes to it — the same way sales and purchases do.
 //

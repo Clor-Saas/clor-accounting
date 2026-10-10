@@ -605,7 +605,7 @@ const InventoryModule = ({ db, openModal, currentCompany, warehouses = [], onOpe
         </>
       }
       tip={{
-        storageKey: 'neev.tip.inventory',
+        storageKey: 'clor.tip.inventory',
         Icon: Boxes,
         text: 'Nothing here is stored — every column is worked out from the bills, invoices and adjustments in the period.',
       }}

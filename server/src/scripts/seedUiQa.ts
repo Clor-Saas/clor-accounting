@@ -66,7 +66,7 @@ const assertNotProduction = () => {
   if (env === 'production' || env === 'prod') reasons.push(`NODE_ENV=${env}`);
   if (!isLocalDatabase(url)) reasons.push(`DATABASE_URL is not on this machine (${url.slice(0, 24)}…)`);
   if (/prod/i.test(url)) reasons.push('DATABASE_URL names a production database');
-  if (process.env.NEEV_ALLOW_SEED === 'never') reasons.push('NEEV_ALLOW_SEED=never');
+  if (process.env.CLOR_ALLOW_SEED === 'never') reasons.push('CLOR_ALLOW_SEED=never');
 
   if (reasons.length) {
     console.error('\n  Refusing to seed. This looks like a real environment:');
@@ -79,7 +79,7 @@ const assertNotProduction = () => {
 /* ------------------------------------------------------------------- data */
 
 const OWNER = {
-  email: 'ui-qa@neevone.local',
+  email: 'ui-qa@clor.local',
   password: 'UiQaPassw0rd!23',
   name: 'UI QA Owner',
 };

@@ -438,7 +438,7 @@ export default function CompanyGroups({ db, setDb, currentCompany, onSwitched, i
         { label: 'Owed to the group', value: groupTotals.outstanding, tone: 'outstanding', Icon: FileText },
       ]}
       tip={{
-        storageKey: 'neev.tip.companies',
+        storageKey: 'clor.tip.companies',
         Icon: Building2,
         text: 'Every screen in the product works on the active company — set it here, and the books, documents and reports follow.',
       }}

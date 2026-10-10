@@ -2150,7 +2150,7 @@ const CashBankModule = ({ db, setDb, currentCompany, openModal, openLedgerCreate
         </>
       }
       tip={{
-        storageKey: 'neev.tip.cashBank',
+        storageKey: 'clor.tip.cashBank',
         Icon: ListTodo,
         text: 'A statement line becomes a book entry when you give it a ledger — until then it sits under Uncategorised.',
       }}

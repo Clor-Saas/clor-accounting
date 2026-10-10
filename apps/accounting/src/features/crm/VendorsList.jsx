@@ -247,7 +247,7 @@ export default function VendorsList({ db, setDb, currentCompany }) {
       statusCounts={vendStatusCounts}
       onStatusChange={setVendStatus}
       tip={{
-        storageKey: 'neev.tip.vendors',
+        storageKey: 'clor.tip.vendors',
         text: 'Payable and overdue are read off the bills themselves — a vendor with an unregistered GSTIN puts the purchase under reverse charge.',
         Icon: Truck,
       }}

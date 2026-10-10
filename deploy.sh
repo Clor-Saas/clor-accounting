@@ -16,7 +16,7 @@
 # second deploy refuses rather than overwriting. The lock is released on any
 # exit, including failure and Ctrl-C; only a dead process leaves one behind,
 # which is what --unlock is for. Every start and end is appended to
-# /opt/neev/deploy.log so the next question of "what changed at 10:16?" has
+# /opt/clor/deploy.log so the next question of "what changed at 10:16?" has
 # an answer.
 #
 # The frontend is built HERE, never on the server. The box has 954 MB of RAM
@@ -27,9 +27,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-HOST="${NEEV_HOST:-68.233.107.83}"
-KEY="${NEEV_KEY:-$HOME/.ssh/neevone}"
-URL="${NEEV_URL:-https://68.233.107.83.sslip.io}"
+HOST="${CLOR_HOST:-68.233.107.83}"
+KEY="${CLOR_KEY:-$HOME/.ssh/clor}"
+URL="${CLOR_URL:-https://68.233.107.83.sslip.io}"
 SSH=(ssh -i "$KEY" -o ConnectTimeout=20 "ubuntu@$HOST")
 
 step() { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -37,8 +37,8 @@ step() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 # Who is deploying what. The SHA gains "-dirty" when the tree has uncommitted
 # changes, because a bundle built from a dirty tree matches no commit anyone
 # can check out later — which is exactly the thing worth knowing about it.
-LOCK=/opt/neev/deploy.lock
-DEPLOY_LOG=/opt/neev/deploy.log
+LOCK=/opt/clor/deploy.lock
+DEPLOY_LOG=/opt/clor/deploy.log
 DEPLOYER="${USER:-$(whoami)}@$(hostname -s)"
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 [ -n "$(git status --porcelain 2>/dev/null)" ] && SHA="${SHA}-dirty"
@@ -55,9 +55,9 @@ show_lock() {
 }
 
 if [ "${1:-}" = "--status" ]; then
-  "${SSH[@]}" 'systemctl is-active neev-api caddy postgresql | paste -sd" / " -; echo; free -m | head -2; echo
-    set -a; . /opt/neev/.env; set +a
-    psql "$PGADMIN_URL" -qtAc "SELECT pg_size_pretty(pg_database_size('"'"'neevone'"'"'))" 2>/dev/null \
+  "${SSH[@]}" 'systemctl is-active clor-api caddy postgresql | paste -sd" / " -; echo; free -m | head -2; echo
+    set -a; . /opt/clor/.env; set +a
+    psql "$PGADMIN_URL" -qtAc "SELECT pg_size_pretty(pg_database_size('"'"'clor'"'"'))" 2>/dev/null \
       | sed "s/^/database: /" || echo "database: unreachable"'
   printf '\napp: '; curl -s -o /dev/null -w '%{http_code}\n' --max-time 20 "$URL/"
   step "Deployment lock"
@@ -124,34 +124,34 @@ step "Uploading frontend"
 # old page still works while the swap happens, and the stale files go only
 # after the new index.html is in place and pointing elsewhere.
 # 1. New assets alongside the old ones — nothing is removed yet.
-rsync -az -e "ssh -i $KEY" dist/assets/ "ubuntu@$HOST:/opt/neev/web/assets/"
+rsync -az -e "ssh -i $KEY" dist/assets/ "ubuntu@$HOST:/opt/clor/web/assets/"
 # 2. index.html and the rest, now that what it points at is already there.
-rsync -az --exclude assets -e "ssh -i $KEY" dist/ "ubuntu@$HOST:/opt/neev/web/"
+rsync -az --exclude assets -e "ssh -i $KEY" dist/ "ubuntu@$HOST:/opt/clor/web/"
 # 3. Only now sweep what the new build no longer references.
-rsync -az --delete -e "ssh -i $KEY" dist/ "ubuntu@$HOST:/opt/neev/web/"
+rsync -az --delete -e "ssh -i $KEY" dist/ "ubuntu@$HOST:/opt/clor/web/"
 
 if [ "${1:-}" = "--api" ]; then
   step "Uploading API source"
   rsync -az --delete \
     --exclude node_modules --exclude 'prisma/*.db' --exclude dist \
-    -e "ssh -i $KEY" server/ "ubuntu@$HOST:/opt/neev/server/"
+    -e "ssh -i $KEY" server/ "ubuntu@$HOST:/opt/clor/server/"
 
   step "Backing up the database"
   # Before anything is installed, migrated or restarted. A backup taken after a
   # migration is a backup of the problem.
   "${SSH[@]}" 'set -e
-    set -a; . /opt/neev/.env; set +a
-    mkdir -p /opt/neev/backups
-    f="/opt/neev/backups/neevone-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+    set -a; . /opt/clor/.env; set +a
+    mkdir -p /opt/clor/backups
+    f="/opt/clor/backups/clor-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
     # One dump of one database: every schema, consistent to the same instant.
     # That consistency is the whole reason the apps share a database.
     # PGADMIN_URL points at `postgres`, the maintenance database every cluster
     # has and the one place none of this data is. Same credentials, our database.
-    dump_url=$(printf %s "$PGADMIN_URL" | sed "s#/postgres\$#/neevone#")
+    dump_url=$(printf %s "$PGADMIN_URL" | sed "s#/postgres\$#/clor#")
     pg_dump "$dump_url" | gzip > "$f"
     ls -lh "$f" | awk "{print \"  \" \$5 \" \" \$9}"
     # Keep a fortnight. Older ones are on the operator, not on this script.
-    ls -1t /opt/neev/backups/neevone-*.sql.gz | tail -n +15 | xargs -r rm --'
+    ls -1t /opt/clor/backups/clor-*.sql.gz | tail -n +15 | xargs -r rm --'
 
   step "Installing, migrating and rebuilding on the server"
   # Migrations are versioned and applied as the OWNER — the application role
@@ -163,8 +163,8 @@ if [ "${1:-}" = "--api" ]; then
   # when a migration fails, but silencing it meant the failure arrived with no
   # reason attached and the schema half applied.
   "${SSH[@]}" 'set -e
-    cd /opt/neev/server
-    set -a; . /opt/neev/.env; set +a
+    cd /opt/clor/server
+    set -a; . /opt/clor/.env; set +a
     # --include=dev explicitly: the .env sourced above sets NODE_ENV=production,
     # which makes npm skip devDependencies, and tsc is one of them.
     npm ci --include=dev --no-audit --no-fund >/dev/null 2>&1
@@ -188,11 +188,11 @@ if [ "${1:-}" = "--api" ]; then
     # prints "nothing to do" when the catalogue and the grants agree.
     npx tsx scripts/backfillOwnerPermissions.ts --fix
     npm run build >/dev/null 2>&1
-    sudo systemctl restart neev-api'
+    sudo systemctl restart clor-api'
 fi
 
 step "Checking it came back up"
-"${SSH[@]}" 'systemctl is-active neev-api caddy | paste -sd" / " -'
+"${SSH[@]}" 'systemctl is-active clor-api caddy | paste -sd" / " -'
 printf 'app: '; curl -s -o /dev/null -w '%{http_code}\n' --max-time 25 "$URL/"
 # Not /api/health — that is behind the tenant middleware, so it answers 401
 # to a monitor and 401 to a database that has fallen over, which makes it

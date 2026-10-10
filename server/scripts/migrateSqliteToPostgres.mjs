@@ -60,7 +60,7 @@ const env = (() => {
 
 const sqlitePath = resolve(process.cwd(), flag('from', 'prisma/dev.db'));
 const target = flag('to', process.env.PGADMIN_URL || env.PGADMIN_URL);
-const database = flag('database', 'neevone');
+const database = flag('database', 'clor');
 /* One database, one schema per application — so the copy has to be told which
    application's tables it is filling, not which database. */
 const schema = flag('schema', 'accounting');

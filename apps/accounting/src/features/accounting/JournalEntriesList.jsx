@@ -185,7 +185,7 @@ export default function JournalEntriesList({ db, setDb, currentCompany, onNewJou
       statusCounts={jvStatusCounts}
       onStatusChange={setJvStatus}
       tip={{
-        storageKey: 'neev.tip.journalEntries',
+        storageKey: 'clor.tip.journalEntries',
         Icon: BookOpen,
         text: 'An entry that reached the ledger is reversed rather than deleted — the original stays, and the opposite entry shows what was undone.',
       }}

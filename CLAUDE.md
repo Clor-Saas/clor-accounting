@@ -1,4 +1,4 @@
-# Neev One
+# Clor
 
 Indian GST accounting and business SaaS. React 19 + Vite + Tailwind SPA (`src/`), Express + Prisma + SQLite API (`server/`).
 

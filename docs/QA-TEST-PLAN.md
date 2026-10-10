@@ -1,4 +1,4 @@
-# Neev One — Manual QA Test Plan
+# Clor — Manual QA Test Plan
 
 **Build:** v0.1.0+ (main) · **Environments:** local dev (`npm run dev:all`, app on :5173) or Docker (`npm run docker:up`, app on :8080) · **Browsers:** Chrome + Firefox, plus one mobile viewport pass (375px) · **Themes:** run the smoke suite once in light, once in dark (toggle: moon icon, top right).
 
@@ -10,7 +10,7 @@ Every test states steps and expected result. Log failures with: test ID, browser
 
 | ID | Steps | Expected |
 |----|-------|----------|
-| S1 | Open app URL logged out | Landing page: "Books that balance themselves", orange branding, Neev One name, theme toggle works |
+| S1 | Open app URL logged out | Landing page: "Books that balance themselves", orange branding, Clor name, theme toggle works |
 | S2 | Sign up with a fresh email → password ≥8 chars with upper/lower | Lands in company setup, then app shell |
 | S3 | First sign-in on a new company | **Onboarding wizard** appears: Company → First customer → First invoice. Complete it; "Create first invoice" opens the invoice editor |
 | S4 | Dashboard | KPI cards (Billed/Collected/Outstanding/Average) with ₹ compact figures; charts render; no console errors |
@@ -106,7 +106,7 @@ Every test states steps and expected result. Log failures with: test ID, browser
 
 | ID | Steps | Expected |
 |----|-------|----------|
-| W1 | Production build/Docker: browser address bar | Install icon available; installs as "Neev One" with orange icon |
+| W1 | Production build/Docker: browser address bar | Install icon available; installs as "Clor" with orange icon |
 | W2 | Second load | Shell assets from cache (Network tab: served by service worker); /api always network |
 | W3 | First load | Main JS ~253KB gzip; Cash & Bank / PDF chunks load only when visited |
 

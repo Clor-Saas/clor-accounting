@@ -51,7 +51,7 @@ if (!password) {
   process.exit(1);
 }
 
-const databases = (process.env.CLOR_DATABASES || env.CLOR_DATABASES || 'neevone')
+const databases = (process.env.CLOR_DATABASES || env.CLOR_DATABASES || 'clor')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);

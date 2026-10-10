@@ -1,6 +1,6 @@
-# Neev's databases, and why there are several
+# Clor's databases, and why there are several
 
-Neev is several applications sharing a shell. Each keeps its own database:
+Clor is several applications sharing a shell. Each keeps its own database:
 
 | Database | Holds | State |
 | --- | --- | --- |
@@ -30,12 +30,12 @@ dates, and no answer to which is right.
 the statutory numbers — stays in payroll, because those are the fields that make
 payroll worth stealing and a directory should not be a place to read them.
 
-# Payroll — a separate application inside Neev
+# Payroll — a separate application inside Clor
 
 Payroll is its own bounded context. It has its own database, its own generated
 Prisma client, its own migrations, and shares no table with accounting. It is
 reached through the same shell, the same sign-in and the same permission model,
-so to a user it is part of Neev; underneath, it is a second application.
+so to a user it is part of Clor; underneath, it is a second application.
 
 ## Why the boundary exists
 
@@ -65,12 +65,12 @@ totals, who posted it and when. It is a receipt, not a second ledger.
 
 ## How the two are joined
 
-Payroll stores Neev identifiers as plain strings, with no cross-database foreign
+Payroll stores Clor identifiers as plain strings, with no cross-database foreign
 keys, because no such constraint can exist:
 
 | Field | Points at |
 | --- | --- |
-| `accountId`, `orgId`, `branchId` | Neev tenancy |
+| `accountId`, `orgId`, `branchId` | Clor tenancy |
 | `ledgerAccountId` | `LedgerAccount` in accounting |
 | `journalEntryId` | `JournalEntry` in accounting |
 | `costCenterId` | `OrgMaster` of kind `COST_CENTER` |

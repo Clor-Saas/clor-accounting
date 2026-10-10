@@ -1895,7 +1895,7 @@ export const StockTransfersList = ({
       statusCounts={transferCounts}
       onStatusChange={setStatusFilter}
       tip={{
-        storageKey: `neev.tip.transfers.${mode}`,
+        storageKey: `clor.tip.transfers.${mode}`,
         Icon: Truck,
         text: 'Stock in transit belongs to neither end until it is approved — approve for what actually turned up, not what was sent.',
       }}

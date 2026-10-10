@@ -1,7 +1,7 @@
 import { prisma } from '../utils/prisma.js';
 
 /**
- * The public handle for a company: the `agc` in `agc.books.neevone.com`.
+ * The public handle for a company: the `agc` in `agc.books.clor.in`.
  *
  * Two identifiers, deliberately not one. The internal `id` is a cuid, is used
  * for every foreign key and every authorisation check, and never changes. The
@@ -29,7 +29,7 @@ export const RESERVED_SLUGS = new Set([
   'support', 'help', 'docs', 'doc', 'blog', 'news', 'about', 'legal', 'privacy', 'terms',
   'login', 'logout', 'signup', 'signin', 'register', 'auth', 'sso', 'oauth', 'account', 'accounts',
   'billing', 'pay', 'payment', 'payments', 'invoice', 'invoices', 'checkout', 'pricing',
-  'books', 'neev', 'neevone', 'test', 'dev', 'staging', 'demo', 'sandbox', 'internal',
+  'books', 'clor', 'clor', 'test', 'dev', 'staging', 'demo', 'sandbox', 'internal',
   // Module names, so none of them can be taken before we can use them.
   'sales', 'purchase', 'purchases', 'inventory', 'reports', 'settings', 'crm', 'expenses', 'journals',
 ]);

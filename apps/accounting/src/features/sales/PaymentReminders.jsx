@@ -217,7 +217,7 @@ export default function PaymentReminders({ db, setDb, currentCompany }) {
       statusCounts={prStatusCounts}
       onStatusChange={setFilter}
       tip={{
-        storageKey: 'neev.tip.paymentReminders',
+        storageKey: 'clor.tip.paymentReminders',
         text: 'Send now is not a stage — it is every invoice the schedule says is owed a message today.',
         Icon: Bell,
       }}
