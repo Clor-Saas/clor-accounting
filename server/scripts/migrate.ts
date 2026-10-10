@@ -87,6 +87,32 @@ function main() {
     }
 
     console.log(`\nApplying ${app.name} migrations.`);
+    if (app.name === 'accounting') {
+      /*
+       * The first production attempt of this migration reached PostgreSQL with
+       * SQLite SQL and Prisma recorded it as failed before any data changed.
+       * Clear only that known record so the corrected, transactional migration
+       * below can run. Once applied, `resolve --rolled-back` exits non-zero and
+       * is deliberately ignored on later deployments.
+       */
+      try {
+        execFileSync(
+          'npx',
+          ['prisma', 'migrate', 'resolve', '--rolled-back', '20260926000000_resequence_customer_codes', '--schema', app.schemaFile],
+          {
+            cwd: SERVER_ROOT,
+            stdio: 'pipe',
+            env: {
+              ...process.env,
+              DATABASE_URL: ownerUrlFor(admin, runtime, app.name),
+            },
+          }
+        );
+        console.log('Recovered the interrupted customer-code migration.');
+      } catch {
+        // No failed record exists; normal deploy handling continues below.
+      }
+    }
     execFileSync('npx', ['prisma', 'migrate', 'deploy', '--schema', app.schemaFile], {
       cwd: SERVER_ROOT,
       stdio: 'inherit',
