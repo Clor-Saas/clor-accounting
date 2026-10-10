@@ -1,136 +1,75 @@
 import { useMemo } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
-import { breadcrumbFor, categoryFor, groupedForCategory, settingFor } from './settingsRegistry';
-import { SETTINGS_ACTIONS_SLOT_ID, SettingsFrameContext } from './settingsFrame';
+import { EntityMark } from '@ui/components/ui/Primitives';
+import { settingFor, visibleCategories } from './settingsRegistry';
 
-/**
- * A category, with its settings down the side.
- *
- * This is local navigation: the settings inside the category somebody chose.
- * It is deliberately not the global rail — that lists the product's modules and
- * stays where it is. Mixing the two is what made Settings a forty-item menu
- * hanging off a sidebar that also had to hold Sales, Purchases and the rest.
- */
+export const SettingsCatalogNav = ({ activeKey = '', can = () => true, isEnabled = () => true, onSelect }) => {
+  const categories = useMemo(() => visibleCategories({ can, isEnabled }), [can, isEnabled]);
 
-const Breadcrumb = ({ crumbs, onNavigate }) => (
-  <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1 text-sm">
-    {crumbs.map((crumb, i) => (
-      <span key={`${crumb.label}-${i}`} className="flex items-center gap-1">
-        {i > 0 ? <ChevronRight size={14} aria-hidden="true" className="ui-subtle" /> : null}
-        {crumb.target ? (
-          <button type="button" onClick={() => onNavigate(crumb.target)} className="ui-muted hover:ui-fg underline-offset-2 hover:underline">
-            {crumb.label}
-          </button>
-        ) : (
-          <span aria-current="page">{crumb.label}</span>
-        )}
-      </span>
-    ))}
-  </nav>
-);
-
-const LocalNavItem = ({ item, selected, onSelect }) => {
-  const Icon = item.icon;
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(item.key)}
-      aria-current={selected ? 'page' : undefined}
-      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-start text-sm transition-colors duration-150"
-      style={
-        selected
-          ? {
-              /* Tinted, not filled: the row should read as chosen without
-                 becoming the loudest thing on the screen. */
-              backgroundColor: 'rgb(var(--brand) / 0.10)',
-              color: 'rgb(var(--fg))',
-              boxShadow: 'inset 2px 0 0 rgb(var(--brand))',
-            }
-          : undefined
-      }
-    >
-      <Icon
-        size={16}
-        aria-hidden="true"
-        className="shrink-0"
-        style={selected ? { color: 'rgb(var(--brand))' } : undefined}
-      />
-      <span className={selected ? 'truncate font-medium' : 'ui-muted truncate'}>{item.title}</span>
-    </button>
+    <aside className="settings-catalog ui-rail hidden w-[15rem] flex-none overflow-y-auto sm:block" aria-label="Settings navigation">
+      <nav>
+        {categories.map((category) => (
+          <section key={category.id} className="settings-catalog-group" aria-labelledby={`settings-heading-${category.id}`}>
+            <h2 id={`settings-heading-${category.id}`} className="settings-catalog-heading">{category.title}</h2>
+            <div className="settings-catalog-items">
+              {category.items.map((item) => {
+                const Icon = item.icon;
+                const selected = item.key === activeKey;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    aria-current={selected ? 'page' : undefined}
+                    data-active={selected ? 'true' : undefined}
+                    onClick={() => onSelect(item.key)}
+                    className="settings-catalog-link ui-nav-item"
+                    data-tone="settings"
+                  >
+                    <Icon size={14} aria-hidden="true" className="shrink-0" />
+                    <span className="min-w-0 truncate text-left">{item.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </nav>
+    </aside>
   );
 };
 
-export default function SettingsWorkspace({ categoryId, activeKey, can, isEnabled, onNavigate, children }) {
+export default function SettingsWorkspace({ activeKey, can, isEnabled, onNavigate, onExit, children }) {
   const item = settingFor(activeKey);
-  const id = categoryId || item?.category || '';
-  const category = categoryFor(id);
-
-  const groups = useMemo(() => (id ? groupedForCategory(id, { can, isEnabled }) : []), [id, can, isEnabled]);
-
-  const crumbs = useMemo(() => {
-    if (item) return breadcrumbFor(item.key);
-    return [
-      { label: 'Settings', target: 'settings' },
-      { label: category?.title || 'Settings', target: null },
-    ];
-  }, [item, category]);
-
-  if (!category) return children || null;
 
   return (
-    <SettingsFrameContext.Provider value>
-    <div className="space-y-6">
-      <Breadcrumb crumbs={crumbs} onNavigate={onNavigate} />
-
-      {/* One heading for the page, and the screen's own controls beside it.
-          The screens used to print a second `PageHeader` here, so the title
-          appeared twice and the page carried two `<h1>`s; their actions now
-          arrive through `SettingsPageActions` and land in the slot below. */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="ui-t-page">{item?.title || category.title}</h1>
-          <p className="ui-muted ui-t-body mt-1">{item?.description || category.description}</p>
+    <div className="space-y-0">
+      <div
+        className="settings-page-bar sticky top-0 z-50 flex items-center border-b ui-border-c"
+        style={{ backgroundColor: 'rgb(var(--app-bg))', boxShadow: '0 8px 16px rgb(0 0 0 / 0.04)' }}
+      >
+        <div className="flex items-center gap-2">
+          {onExit ? (
+            <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onExit} aria-label="Back to application">
+              <ArrowLeft size={15} aria-hidden="true" /> Back to app
+            </button>
+          ) : null}
+          <EntityMark entity="settings" /><h1 className="ui-t-page">Settings</h1>
         </div>
-        <div
-          id={SETTINGS_ACTIONS_SLOT_ID}
-          className="flex flex-wrap items-center justify-end gap-2 min-w-0 max-w-full"
-        />
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
-        {/*
-          On a phone this is a strip above the content rather than a second
-          permanent sidebar — two of those on a 390px screen leaves nothing for
-          the setting itself.
-        */}
-        <nav aria-label={`${category.title} settings`} className="min-w-0">
-          <div className="ui-card p-2 lg:sticky lg:top-4">
-            <div className="flex gap-1 overflow-x-auto lg:block lg:overflow-visible">
-              {groups.map((group, gi) => (
-                <div key={group.name || `g${gi}`} className="min-w-max lg:min-w-0">
-                  {group.name ? (
-                    <div className="ui-caption hidden px-3 pb-1 pt-2 lg:block">{group.name}</div>
-                  ) : null}
-                  <div className="flex gap-1 lg:block lg:space-y-0.5">
-                    {group.items.map((navItem) => (
-                      <LocalNavItem
-                        key={navItem.key}
-                        item={navItem}
-                        selected={navItem.key === activeKey}
-                        onSelect={onNavigate}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
+      <div className="settings-workspace flex min-h-[calc(100dvh-12rem)] overflow-hidden border ui-border-c bg-[rgb(var(--surface))]">
+        <SettingsCatalogNav activeKey={activeKey} can={can} isEnabled={isEnabled} onSelect={onNavigate} />
+        <main className="settings-content min-w-0 flex-1 overflow-y-auto p-4 lg:p-5">
+          {item && !['settingsBranches', 'settingsWarehouses', 'settingsTax', 'settingsTds'].includes(activeKey) ? (
+            <div className="settings-content-heading mb-3 border-b ui-border-c pb-3">
+              <h2 className="ui-t-page">{item.title}</h2>
             </div>
-          </div>
-        </nav>
-
-        <div className="min-w-0">{children}</div>
+          ) : null}
+          <div className="min-w-0">{children}</div>
+        </main>
       </div>
     </div>
-    </SettingsFrameContext.Provider>
   );
 }

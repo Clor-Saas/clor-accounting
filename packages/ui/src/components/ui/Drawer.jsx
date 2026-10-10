@@ -70,10 +70,15 @@ export default function Drawer({ open, onClose, title, description = '', childre
       }
     };
 
+    /* `onClose` is commonly declared inline by the screen that owns the
+       drawer. Including it here made this effect run after every controlled
+       input change and focused the panel again, stealing focus from the field
+       after the first character. Opening is the only event that should move
+       focus into the drawer. */
     window.addEventListener('keydown', onKey, true);
     panelRef.current?.focus();
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

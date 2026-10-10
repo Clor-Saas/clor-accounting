@@ -133,6 +133,7 @@ export const AccountForm = ({ db, setDb, currentCompany, initialData = null, exc
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    e.stopPropagation();
 
     const name = String(formData.name || '').trim();
     const groupValue = String(formData.groupId || '').trim();

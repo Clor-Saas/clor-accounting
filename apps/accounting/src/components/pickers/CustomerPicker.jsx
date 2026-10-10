@@ -9,7 +9,7 @@ import { CUSTOMER_CFG } from './partyFormConfig';
 import { AddressTab, ContactsTab, CURRENCY_OPTIONS, CUSTOMER_TABS, FormRow } from './customerFormParts';
 import Modal from '@ui/components/ui/Modal';
 import Popover from '@ui/components/ui/Popover';
-import { createCustomer, listCustomers, lookupGstin, toServerCustomer } from '@ui/api/masters';
+import { createCustomer, listCustomers, lookupGstin, toServerCustomer, updateCustomer } from '@ui/api/masters';
 import { useServerMasters, mirrorServerRows } from '@ui/hooks/useServerMasters';
 import { GST_STATE_BY_CODE, getGstStateFromGstin } from '@ui/utils/gst';
 import { activePriceListOptions, mergeGstinFetch, validateParty } from '@ui/utils/partyMaster';
@@ -19,7 +19,7 @@ import { rankedSearch, soleConfidentMatch } from '@ui/utils/rankedSearch';
 import { useListboxKeys, openOnKey, focusNextAfter } from '@ui/components/pickers/useListboxKeys';
 import { useRecentPicks } from '@ui/components/pickers/useRecentPicks';
 import { useRemoteSearch } from '@ui/components/pickers/useRemoteSearch';
-import { nextCustomerCode } from '@ui/utils/masterCodes';
+import { isValidCustomerCode, nextCustomerCode } from '@ui/utils/masterCodes';
 
 export const CustomerForm = ({
   db,
@@ -35,6 +35,10 @@ export const CustomerForm = ({
   onClose,
 }) => {
   const isEdit = Boolean(initialData);
+  const branchOptions = (Array.isArray(db?.branches) ? db.branches : [])
+    .filter((branch) => Number(branch?.companyId ?? currentCompany.id) === Number(currentCompany.id) && branch?.isActive !== false)
+    .map((branch) => ({ value: String(branch.id), label: String(branch.name || branch.branchName || branch.code || branch.branchCode || `Branch ${branch.id}`) }));
+  const multiBranchEnabled = branchOptions.length > 1;
   const INDIA_COUNTRY = 'India';
   const INDIA_STATES = Object.entries(GST_STATE_BY_CODE)
     .map(([code, name]) => ({ code, name }))
@@ -105,6 +109,7 @@ export const CustomerForm = ({
         allowCreditNotes: initialData.allowCreditNotes !== false,
         openingBalance: Number(initialData.openingBalance ?? 0),
         openingBalanceType: String(initialData.openingBalanceType || 'Dr'),
+        openingBalanceBranchId: String(initialData.openingBalanceBranchId || ''),
         billingAddress: {
           ...billing,
           state: String(billing.state || ''),
@@ -140,6 +145,7 @@ export const CustomerForm = ({
         code: '',
         openingBalance: 0,
         openingBalanceType: String(seedData.openingBalanceType || 'Dr'),
+        openingBalanceBranchId: '',
         creditLimit:
           seedData.creditLimit === undefined || seedData.creditLimit === null ? '' : String(seedData.creditLimit),
         contacts: Array.isArray(seedData.contacts) && seedData.contacts.length
@@ -156,6 +162,7 @@ export const CustomerForm = ({
       groupId: sundryDebtorsGroup?.id ? String(sundryDebtorsGroup.id) : '',
       openingBalance: isEdit ? Number(initialData?.openingBalance ?? 0) : 0,
       openingBalanceType: isEdit ? (initialData?.openingBalanceType || 'Dr') : 'Dr',
+      openingBalanceBranchId: '',
       contactPerson: '',
       mobile: '',
       email: '',
@@ -328,6 +335,14 @@ export const CustomerForm = ({
 
   const [tab, setTab] = useState('address');
   const saveAndNewRef = useRef(false);
+  /* Reserve the previewed code for this form session. Recomputing it on every
+     render made an unrelated GSTIN fetch appear to replace the customer code
+     whenever the customer list refreshed in the background. */
+  const [reservedCustomerCode, setReservedCustomerCode] = useState(() =>
+    isEdit && isValidCustomerCode(initialData?.code)
+      ? String(initialData.code).trim()
+      : nextCustomerCode((db?.customers || []).filter((customer) => String(customer.id) !== String(initialData?.id || '')))
+  );
 
   /* The lists in force today. Same rule as the vendor form, same source. */
   const priceListOptions = useMemo(
@@ -339,7 +354,7 @@ export const CustomerForm = ({
   const resetForm = () =>
     setFormData((p) => ({
       ...p,
-      displayName: '', gstin: '', pan: '', code: '', openingBalance: 0,
+      displayName: '', gstin: '', pan: '', code: '', openingBalance: 0, openingBalanceBranchId: '',
       msmeNumber: '', statutoryOther: '', priceListId: '',
       contacts: [], shipToAddresses: [],
       billingAddress: { line1: '', line2: '', city: '', district: '', state: '', pincode: '', country: INDIA_COUNTRY },
@@ -451,7 +466,8 @@ export const CustomerForm = ({
       /* Fills blanks, keeps what was typed — the same rule the vendor form
          follows, from the same place, so the two cannot drift apart. */
       const { next, kept } = mergeGstinFetch({ prev: formData, data: { ...data, gstin } });
-      setFormData(next);
+      // Customer codes are allotted by this form, never by the GST registry.
+      setFormData({ ...next, code: formData.code });
       notify.success(data?.source === 'derived' ? 'State and PAN filled from the GSTIN.' : 'Fetched from the GST portal.');
       if (kept.length) {
         notify.info(`Kept what you had typed for the ${kept.join(', ')}. Clear a field and fetch again to take the portal's version.`);
@@ -465,6 +481,7 @@ export const CustomerForm = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
     /*
      * Which button was pressed. "Save and New" clears the form and keeps it
      * open, which is what somebody entering a list wants; Save closes. Read
@@ -489,6 +506,10 @@ export const CustomerForm = ({
     if (complaint) {
       if (complaint.tab) setTab(complaint.tab);
       notify.error(complaint.message);
+      return;
+    }
+    if (multiBranchEnabled && Number(formData.openingBalance || 0) !== 0 && !String(formData.openingBalanceBranchId || '').trim()) {
+      notify.error('Select the branch that carries this opening balance.');
       return;
     }
 
@@ -560,9 +581,15 @@ export const CustomerForm = ({
     const billingStateFinal = String(gstStateAuto || formData.billingAddress.state || '').trim();
     const shippingStateFinal = String(formData.shippingSameAsBilling ? billingStateFinal : formData.shippingAddress.state || '').trim();
 
+    const allottedCustomerCode = isEdit && isValidCustomerCode(formData.code)
+      ? String(formData.code).trim()
+      : reservedCustomerCode;
     const payloadBase = {
       companyId: currentCompany.id,
       ...formData,
+      // Keep the browser copy and the server record on the same six-digit
+      // customer series, including when the connection is temporarily down.
+      code: allottedCustomerCode,
       name: formData.displayName.trim(),
       gstin: effectiveGstin,
       pan: effectivePan,
@@ -624,7 +651,7 @@ export const CustomerForm = ({
       const nextCoaId = coa.reduce((m, a) => Math.max(m, Number(a?.id || 0)), 0) + 1;
 
       const ledgerName = getCustomerDisplayName(updatedCustomer);
-      const ledgerCode = existingLedger?.code || `CUST-${updatedCustomer.id}`;
+      const ledgerCode = updatedCustomer.code || existingLedger?.code || '';
 
       const upsertLedger = existingLedger
         ? {
@@ -636,6 +663,9 @@ export const CustomerForm = ({
             type: String(typeRow?.accountClass || existingLedger.type || 'Asset'),
             subType: String(typeRow?.name || existingLedger.subType || ''),
             main: String(typeRow?.main || existingLedger.main || 'Balance Sheet'),
+            openingBalance: Math.round((Number(formData.openingBalance) || 0) * 100) / 100,
+            openingBalanceType: formData.openingBalanceType || 'Dr',
+            openingBalanceBranchId: String(formData.openingBalanceBranchId || ''),
             updatedAt: new Date().toISOString(),
           }
         : {
@@ -649,6 +679,9 @@ export const CustomerForm = ({
             subType: String(typeRow?.name || ''),
             main: String(typeRow?.main || 'Balance Sheet'),
             balance: 0,
+            openingBalance: Math.round((Number(formData.openingBalance) || 0) * 100) / 100,
+            openingBalanceType: formData.openingBalanceType || 'Dr',
+            openingBalanceBranchId: String(formData.openingBalanceBranchId || ''),
             createdAt: new Date().toISOString(),
           };
 
@@ -660,6 +693,14 @@ export const CustomerForm = ({
         ...updatedCustomer,
         accountId: existingLedger ? existingLedger.id : upsertLedger.id,
       };
+
+      if (existing.backendPartyId) {
+        try {
+          await updateCustomer(existing.backendPartyId, toServerCustomer(finalCustomer));
+        } catch (e) {
+          notify.error(`Updated on this device only — the server refused it: ${String(e?.message || e)}`);
+        }
+      }
 
       setDb({
         ...db,
@@ -696,7 +737,7 @@ export const CustomerForm = ({
     const ledger = {
       id: nextCoaId,
       companyId: currentCompany.id,
-      code: `CUST-${newCustomer.id}`,
+      code: newCustomer.code,
       name: getCustomerDisplayName(newCustomer),
       ledgerCategory: 'Customer',
       groupId: effectiveGroupId,
@@ -706,6 +747,7 @@ export const CustomerForm = ({
       balance: 0,
       openingBalance: Math.round((Number(formData.openingBalance) || 0) * 100) / 100,
       openingBalanceType: formData.openingBalanceType || 'Dr',
+      openingBalanceBranchId: String(formData.openingBalanceBranchId || ''),
       createdAt: new Date().toISOString(),
     };
 
@@ -739,9 +781,10 @@ export const CustomerForm = ({
 
     if (typeof onCreated === 'function') onCreated(storedCustomer);
     if (saveAndNew) {
+      setReservedCustomerCode(nextCustomerCode([...(db.customers || []), storedCustomer]));
       setFormData((p) => ({
         ...p,
-        displayName: '', gstin: '', pan: '', code: '', openingBalance: 0,
+        displayName: '', gstin: '', pan: '', code: '', openingBalance: 0, openingBalanceBranchId: '',
         contacts: [{ name: '', position: '', email: '', mobile: '' }], shipToAddresses: [],
         billingAddress: { line1: '', line2: '', city: '', district: '', state: '', pincode: '', country: INDIA_COUNTRY },
         shippingAddress: { line1: '', line2: '', city: '', district: '', state: '', pincode: '', country: INDIA_COUNTRY },
@@ -760,7 +803,7 @@ export const CustomerForm = ({
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
+      <form onSubmit={handleSubmit} className="customer-create-form flex min-h-0 flex-col">
         {/*
           The same header the invoice uses, not a second one that looks like
           it. Title on the left, every way out of the screen on the right —
@@ -797,8 +840,10 @@ export const CustomerForm = ({
             setGroupCreateOpen(true);
           }}
           codesEnabled={true}
-          automaticCode={isEdit ? String(formData.code || '') : nextCustomerCode(db?.customers)}
+          automaticCode={reservedCustomerCode}
           priceListOptions={priceListOptions}
+          branchOptions={branchOptions}
+          multiBranchEnabled={multiBranchEnabled}
           onDuplicate={isEdit && onDuplicate ? () => onDuplicate(formData) : null}
           gstinFetching={gstinFetching}
           fetchFromGstin={fetchFromGstin}
@@ -886,24 +931,52 @@ const CustomerPicker = ({ db, setDb, currentCompany, value, onChange, label = 'C
       backendKey: 'backendPartyId',
       serverRows: serverCustomers.rows,
       companyId: currentCompany?.id,
-      mapRow: (srv) => ({
-        name: srv.name || '',
-        gstin: srv.gstin || '',
-        gstRegistration: srv.gstRegistration || 'Unregistered',
-        state: srv.state || srv.billingState || '',
-        email: srv.email || '',
-        mobile: srv.phone || srv.mobile || '',
-        paymentTermDays: srv.paymentTermDays ?? null,
-        createdAt: srv.createdAt || new Date().toISOString(),
-      }),
+      mapRow: (srv) => {
+        const addresses = Array.isArray(srv.addresses) ? srv.addresses : [];
+        const billing = addresses.find((address) => String(address.key || '').toUpperCase() === 'BILLING') || {};
+        const shipping = addresses.find((address) => String(address.key || '').toUpperCase() === 'SHIPPING') || {};
+        const addressValue = (address, prefix) => ({
+          line1: address.line1 ?? srv[`${prefix}Line1`] ?? '',
+          line2: address.line2 ?? srv[`${prefix}Line2`] ?? '',
+          city: address.city ?? srv[`${prefix}City`] ?? '',
+          district: address.district ?? srv[`${prefix}District`] ?? '',
+          state: address.state ?? srv[`${prefix}State`] ?? '',
+          pincode: address.pincode ?? srv[`${prefix}Pincode`] ?? '',
+          country: address.country ?? srv[`${prefix}Country`] ?? 'India',
+        });
+        return {
+          name: srv.name || '', displayName: srv.name || '', code: srv.code || '',
+          contactPerson: srv.contactPerson || '',
+          gstin: srv.gstin || '', pan: srv.pan || '',
+          gstRegistration: srv.gstRegistration || (srv.gstRegistrationType === 'REGULAR' ? 'Registered' : srv.gstRegistrationType === 'COMPOSITION' ? 'Composition' : 'Unregistered'),
+          state: srv.state || srv.billingState || billing.state || '',
+          email: srv.email || '', mobile: srv.phone || srv.mobile || '',
+          paymentTermDays: srv.paymentTermDays ?? null,
+          paymentTermName: srv.paymentTermName || '', creditLimit: srv.creditLimit ?? null,
+          openingBalance: Number(srv.openingBalance || 0), openingBalanceType: srv.openingBalanceType || 'Dr',
+          currency: srv.currency || 'INR', priceListId: srv.priceListId || '',
+          groupName: srv.partyGroup || '', notes: srv.notes || '',
+          msmeNumber: srv.msmeNumber || '', statutoryOther: srv.statutoryOther || '',
+          isActive: srv.isActive !== false, shippingSameAsBilling: srv.shippingSameAsBilling !== false,
+          billingAddress: addressValue(billing, 'billing'),
+          shippingAddress: addressValue(shipping, 'shipping'),
+          shipToAddresses: addresses.filter((address) => !['BILLING', 'SHIPPING'].includes(String(address.key || '').toUpperCase())),
+          contacts: Array.isArray(srv.contacts) ? srv.contacts : [],
+          tdsApplicable: srv.tdsApplicable, tdsNatureCode: srv.tdsNatureCode || '',
+          tdsDeducteeType: srv.tdsDeducteeType || '', tdsResidentialStatus: srv.tdsResidentialStatus || '',
+          tdsLedgerId: srv.tdsLedgerId || '', tdsCertificate: srv.tdsCertificate || null,
+          createdAt: srv.createdAt || new Date().toISOString(),
+        };
+      },
     });
   }, [serverCustomers.source, serverCustomers.rows, setDb, currentCompany?.id]);
 
-  const customers = (db?.customers || []).filter((c) => Number(c.companyId) === Number(currentCompany?.id));
+  const allCustomers = (db?.customers || []).filter((c) => Number(c.companyId) === Number(currentCompany?.id));
+  const customers = allCustomers.filter((customer) => customer.isActive !== false);
 
   // Server ids are strings; documents written before the migration hold numbers.
   const findCustomer = (id) =>
-    customers.find((c) => String(c.id) === String(id)) ||
+    allCustomers.find((c) => String(c.id) === String(id)) ||
     (db?.customers || []).find((c) => String(c.id) === String(id));
   const triggerRef = useRef(null);
   const [showCustomerPopup, setShowCustomerPopup] = useState(false);
@@ -976,6 +1049,10 @@ const CustomerPicker = ({ db, setDb, currentCompany, value, onChange, label = 'C
 
   const chooseCustomer = (customer) => {
     if (!customer) return;
+    if (customer.isActive === false) {
+      notify.error('This customer is inactive. Activate the customer before creating a new entry.');
+      return;
+    }
     recents.remember(customer.id);
     onChange(String(customer.id));
     closePopup({ advance: true });

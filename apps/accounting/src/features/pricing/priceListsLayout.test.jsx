@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@ui/utils/masterSync', () => ({
@@ -51,11 +51,11 @@ describe('Price Lists, laid out like every other list', () => {
     expect(card.textContent).toMatch(/1/);
   });
 
-  it('keeps export behind More rather than beside the tabs', () => {
+  it('keeps the status filter in the header and export behind More', () => {
     view();
     expect(screen.getByRole('button', { name: /^More$/i })).toBeTruthy();
-    const tablist = screen.getByRole('tablist');
-    expect(within(tablist).queryByRole('button', { name: /export/i })).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'Price list status' })).toBeTruthy();
+    expect(screen.queryByRole('tablist')).toBeNull();
   });
 
   it('puts the rows in one card, not a card inside a card', () => {

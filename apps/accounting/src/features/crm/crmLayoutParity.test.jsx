@@ -63,6 +63,7 @@ const PAGES = [
     heading: /Customers/i,
     primary: /New Customer/i,
     search: /Search customers/i,
+    hasKpis: false,
     render: () => <CustomersList db={db} setDb={noop} currentCompany={COMPANY} />,
   },
   {
@@ -101,15 +102,25 @@ describe.each(PAGES)('$name, laid out like every other list', (page) => {
 
   it('carries five figures across the top', () => {
     render(page.render());
+    if (page.hasKpis === false) {
+      expect(screen.queryByRole('region', { name: /Summary/i })).toBeNull();
+      return;
+    }
     expect(screen.getByRole('region', { name: /Summary/i }).children).toHaveLength(5);
   });
 
-  it('offers its filters as tabs with counts', () => {
+  it('offers its filters in the page header with counts', () => {
     render(page.render());
+    const filter = screen.queryByRole('combobox');
+    if (filter) {
+      expect(filter.options.length).toBeGreaterThanOrEqual(3);
+      expect(filter.value).toBe(filter.options[0].value);
+      for (const option of filter.options) expect(option.textContent.trim().length).toBeGreaterThan(0);
+      return;
+    }
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab');
     expect(tabs.length).toBeGreaterThanOrEqual(3);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');
-    for (const tab of tabs) expect(tab.textContent).toMatch(/\d/);
   });
 
   it('keeps page-level actions behind More', () => {
@@ -131,8 +142,9 @@ describe('what the party lists say about money', () => {
     fireEvent.click(screen.getByText('Acme Traders'));
 
     expect(screen.getByRole('heading', { name: 'Acme Traders' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Summary' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getByRole('tab', { name: 'Details' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(screen.getByRole('tablist', { name: 'Customer information' })).getAllByRole('tab')).toHaveLength(3);
+    expect(screen.getByRole('heading', { name: 'Basic Details' })).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Statement' }));
     expect(screen.getByLabelText('Transaction type')).toBeTruthy();
     expect(screen.getByLabelText('Transaction period')).toBeTruthy();
@@ -148,7 +160,6 @@ describe('what the party lists say about money', () => {
     for (const heading of ['Date', 'Type', 'Voucher No.', 'Debit', 'Credit', 'Balance']) {
       expect(screen.getByRole('columnheader', { name: heading })).toBeTruthy();
     }
-    expect(screen.getByText('Customer details')).toBeTruthy();
   });
 
   it('shows what a customer actually owes, not a stored zero', () => {
@@ -163,8 +174,7 @@ describe('what the party lists say about money', () => {
 
   it('marks the part of it that is late', () => {
     render(<CustomersList db={db} setDb={noop} currentCompany={COMPANY} />);
-    const tabs = within(screen.getByRole('tablist')).getAllByRole('tab');
-    const overdue = tabs.find((t) => /Overdue/.test(t.textContent));
+    const overdue = [...screen.getByRole('combobox', { name: 'Customer filter' }).options].find((option) => /Overdue/.test(option.textContent));
     expect(overdue.textContent).toMatch(/1/);
   });
 

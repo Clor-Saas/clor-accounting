@@ -182,7 +182,7 @@ def build(path):
     ws = wb.active
     ws.title = "QA tracker — status"
 
-    ws["A1"] = "Neev One — QA tracker, answered"
+    ws["A1"] = "CLOR — QA tracker, answered"
     ws["A1"].font = Font(bold=True, size=14)
     ws["A2"] = (
         "Every row below was checked on the live site at https://68.233.107.83.sslip.io unless the evidence column "

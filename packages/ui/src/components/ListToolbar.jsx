@@ -134,7 +134,7 @@ export function ListToolbar({
                       fileName: exportFileName || 'export',
                       columns: exportColumns,
                       rows: exportRows,
-                      footNote: `${exportRows.length} row(s) · exported from Clor`,
+                      footNote: `${exportRows.length} row(s) · exported from CLOR`,
                     });
                   }}
                   className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm hover:bg-[rgb(var(--surface-sunken))]"
@@ -213,12 +213,12 @@ export function useListSearch(rows, fields = [], seedKey = '') {
 }
 
 /** Export helper that reports an empty view instead of writing a header-only file. */
-export function exportRows({ fileName, columns, rows, label = 'rows' }) {
+export function exportRows({ fileName, columns, rows, label = 'rows', prefixRows = [], footerRows = [] }) {
   if (!Array.isArray(rows) || !rows.length) {
     notify.error('Nothing to export in the current view.');
     return;
   }
-  downloadCsv({ fileName, columns, rows });
+  downloadCsv({ fileName, columns, rows, prefixRows, footerRows });
   notify.success(`${rows.length} ${label} exported.`);
 }
 

@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { PageHeader } from '../ui/Primitives';
-import { ListSearch, ListTip, MoreButton, StatCards } from './ListPageParts';
+import { ListSearch, MoreButton, StatCards } from './ListPageParts';
 
 /**
  * The shape of a document list page, in one place.
@@ -36,12 +36,14 @@ export default function DocumentListShell({
   onMoreSelect = null,
   primary = null,
   cards = null,
+  denseCards = false,
   company = null,
   tabs = null,
   statusValue = '',
   statusCounts = {},
   onStatusChange = null,
   tabsLabel = 'Status',
+  statusInHeader = false,
   /*
    * Controls that ride the far end of the status row.
    *
@@ -59,20 +61,37 @@ export default function DocumentListShell({
    * says a list may not be.
    */
   surface = 'card',
-  tip = null,
+  compact = true,
+  tight = false,
+  className = '',
   children,
 }) {
   return (
-    <div className="space-y-6">
+    <div className={`${compact ? (tight ? 'space-y-2' : 'space-y-3') : 'space-y-6'} ${tight ? 'document-list-tight' : ''} ${className}`}>
       <PageHeader
         entity={entity}
         title={title}
         description={description}
         actions={
           <>
+            {statusInHeader && tabs?.length ? (
+              <select
+                className="ui-select ui-ctl-compact w-44"
+                value={statusValue}
+                onChange={(event) => onStatusChange?.(event.target.value)}
+                aria-label={tabsLabel}
+              >
+                {tabs.map((tab) => (
+                  <option key={tab.value || 'all'} value={tab.value}>
+                    {tab.label} ({statusCounts[tab.value] ?? 0})
+                  </option>
+                ))}
+              </select>
+            ) : null}
             {/* Search sits in the header rather than in a band of its own: a
                 filter panel spanning the page reads as a second toolbar and
                 costs eighty pixels above the rows somebody came to read. */}
+            {search?.before || null}
             {search ? (
               <ListSearch
                 value={search.value}
@@ -89,9 +108,9 @@ export default function DocumentListShell({
         }
       />
 
-      {cards?.length ? <StatCards company={company} cards={cards} /> : null}
+      {cards?.length ? <StatCards company={company} cards={cards} dense={denseCards} /> : null}
 
-      {tabs?.length ? (
+      {tabs?.length && !statusInHeader ? (
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="ui-segmented" role="tablist" aria-label={tabsLabel}>
             {tabs.map((t) => {
@@ -133,7 +152,6 @@ export default function DocumentListShell({
           separate floating box above it reads as an unrelated control panel. */}
       {surface === 'plain' ? children : <div className="ui-card overflow-hidden">{children}</div>}
 
-      {tip ? <ListTip {...tip} /> : null}
     </div>
   );
 }

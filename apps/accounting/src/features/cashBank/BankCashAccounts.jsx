@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Banknote, Landmark, ListChecks, MoreVertical, PieChart, Plus } from 'lucide-react';
+import { Banknote, CreditCard, Landmark, ListChecks, MoreVertical, PieChart, Plus } from 'lucide-react';
 
 import DocumentListShell from '@ui/components/list/DocumentListShell';
 import { EmptyState, StatusPill } from '@ui/components/ui/Primitives';
@@ -64,10 +64,12 @@ export const cashBankAccounts = (db, companyId) => {
       const balance = rows.length
         ? Number(rows[rows.length - 1]?.runningBalance || 0)
         : Number(statement?.openingBalance || 0);
+      const accountType = String(a.bankDetails?.accountType || a.bankAccountType || a.accountSubType || '').trim();
+      const isOdCashCredit = bank && /(overdraft|cash\s*credit|(^|\W)od(\W|$)|(^|\W)cc(\W|$))/i.test(accountType);
       return {
         id: a.id,
         name: String(a.name || '').trim(),
-        type: bank ? 'Bank' : 'Cash',
+        type: isOdCashCredit ? 'OD / Cash Credit' : bank ? 'Bank' : 'Cash',
         /* The ledger master keeps these under `bankDetails`; older rows kept
            them flat, and both are still in the wild. */
         bankName: String(a.bankDetails?.bankName || a.bankName || '').trim(),
@@ -85,6 +87,7 @@ const TABS = [
   { value: 'all', label: 'All', tone: 'all' },
   { value: 'bank', label: 'Bank Accounts', tone: 'sent' },
   { value: 'cash', label: 'Cash Accounts', tone: 'paid' },
+  { value: 'odcc', label: 'OD / Cash Credit', tone: 'outstanding' },
   { value: 'inactive', label: 'Inactive', tone: 'draft' },
 ];
 
@@ -124,8 +127,9 @@ export default function BankCashAccounts({
   const summary = useMemo(() => {
     const live = accounts.filter((a) => a.isActive);
     return {
-      bank: live.filter((a) => a.type === 'Bank').reduce((t, a) => t + a.balance, 0),
+      bank: live.filter((a) => a.type === 'Bank' || a.type === 'OD / Cash Credit').reduce((t, a) => t + a.balance, 0),
       cash: live.filter((a) => a.type === 'Cash').reduce((t, a) => t + a.balance, 0),
+      odcc: live.filter((a) => a.type === 'OD / Cash Credit').reduce((t, a) => t + a.balance, 0),
       total: accounts.length,
       active: live.length,
     };
@@ -136,6 +140,7 @@ export default function BankCashAccounts({
       all: accounts.length,
       bank: accounts.filter((a) => a.isActive && a.type === 'Bank').length,
       cash: accounts.filter((a) => a.isActive && a.type === 'Cash').length,
+      odcc: accounts.filter((a) => a.isActive && a.type === 'OD / Cash Credit').length,
       inactive: accounts.filter((a) => !a.isActive).length,
     }),
     [accounts]
@@ -184,6 +189,7 @@ export default function BankCashAccounts({
     const live = accounts.filter((a) => a.isActive);
     if (tab === 'bank') return live.filter((a) => a.type === 'Bank');
     if (tab === 'cash') return live.filter((a) => a.type === 'Cash');
+    if (tab === 'odcc') return live.filter((a) => a.type === 'OD / Cash Credit');
     return live;
   }, [accounts, tab]);
 
@@ -202,11 +208,15 @@ export default function BankCashAccounts({
       cards={[
         { label: 'Bank balance', value: summary.bank, tone: 'sent', Icon: Landmark },
         { label: 'Cash balance', value: summary.cash, tone: 'paid', Icon: Banknote },
+        { label: 'OD / Cash Credit', value: summary.odcc, tone: 'outstanding', Icon: CreditCard },
         { label: 'Accounts', value: summary.total, count: true, tone: 'draft', Icon: ListChecks },
         { label: 'Active accounts', value: summary.active, count: true, tone: 'all', Icon: PieChart },
       ]}
+      denseCards
+      tight
       tabs={TABS}
       tabsLabel="Accounts"
+      statusInHeader
       statusValue={tab}
       statusCounts={counts}
       onStatusChange={setTab}
@@ -279,8 +289,8 @@ export default function BankCashAccounts({
           </div>
         </Modal>
       ) : null}
-      <div className="ui-table-scroll">
-        <table className="ui-table ui-table-wide ui-table-sticky">
+      <div className="ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 11.5rem)' }}>
+        <table className={`ui-table ui-table-wide ui-table-sticky ${rows.length ? '' : 'cash-bank-empty-table'}`}>
           <thead>
             <tr>
               <th scope="col">Account name</th>
@@ -290,7 +300,7 @@ export default function BankCashAccounts({
               <th scope="col">Branch</th>
               <th scope="col" className="text-end">Current balance</th>
               <th scope="col">Status</th>
-              <th scope="col" className="text-end">Actions</th>
+              <th scope="col" className="text-end"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>

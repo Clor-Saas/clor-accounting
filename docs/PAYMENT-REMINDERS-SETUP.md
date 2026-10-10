@@ -1,4 +1,4 @@
-# Neev One — Payment Reminders: Configuration & Usage Guide
+# CLOR — Payment Reminders: Configuration & Usage Guide
 
 **Version 1.0 · 19 August 2026**
 
@@ -98,7 +98,7 @@ All three stamp the reminder history; the **Last reminder** column shows
 > <your company name>
 
 - Amounts are the **live balance** (total minus receipts) at send time.
-- The view link opens the invoice in Neev One (the viewer needs access).
+- The view link opens the invoice in CLOR (the viewer needs access).
 - Not yet overdue → the wording switches to "is due on <date>".
 
 ---

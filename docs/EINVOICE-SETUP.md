@@ -1,8 +1,8 @@
-# Neev One — e-Invoice (IRP) & e-Way Bill Integration Guide
+# CLOR — e-Invoice (IRP) & e-Way Bill Integration Guide
 
 **Version 1.0 · 19 August 2026**
 
-This document explains how Neev One reports invoices to the GST network: what
+This document explains how CLOR reports invoices to the GST network: what
 happens technically, what credentials you need, how to configure the
 connection, and how to operate it day to day.
 
@@ -10,7 +10,7 @@ connection, and how to operate it day to day.
 
 ## 1. What this integration does
 
-When a sales invoice is created in Neev One, it can be **registered on the
+When a sales invoice is created in CLOR, it can be **registered on the
 Invoice Registration Portal (IRP)** — the GST network's system at
 `einvoice1.gst.gov.in`. Registration returns:
 
@@ -33,7 +33,7 @@ never registered (they carry a self-generated QR instead).
 
 ## 2. The two connection modes
 
-Neev One supports two providers, selected in
+CLOR supports two providers, selected in
 **Settings → Tax & Compliance → e-Invoice (IRP)**:
 
 | | **NIC direct** | **GSP gateway** |
@@ -50,17 +50,17 @@ Both end at the same IRP; the IRN is identical either way.
 
 ## 3. How the NIC direct protocol works
 
-Neev One implements the NIC API specification (v1.04 auth / v1.03 core, as
+CLOR implements the NIC API specification (v1.04 auth / v1.03 core, as
 published under Help → API sandbox on einvoice1.gst.gov.in):
 
 **Step 1 — Authentication** (`POST {base}/eivital/v1.04/auth`)
 
-1. Neev One generates a random 32-byte **AppKey**.
+1. CLOR generates a random 32-byte **AppKey**.
 2. Your username, password and the AppKey are put in a JSON payload,
    base64-encoded, then **RSA-encrypted with the portal's public key** (the
    PEM you paste into settings).
 3. The portal answers with an **AuthToken** and a **Sek** (session encryption
-   key), where the Sek is AES-256-ECB encrypted under your AppKey. Neev One
+   key), where the Sek is AES-256-ECB encrypted under your AppKey. CLOR
    decrypts it and caches the session (~55 minutes; sandbox tokens live 60).
 
 **Step 2 — Generate IRN** (`POST {base}/eicore/v1.03/Invoice`)
@@ -80,7 +80,7 @@ Same encryption; the request carries the IRN plus transport details
 validity are stored on the invoice.
 
 **Security posture**: your API password and client secret are stored
-**AES-256-GCM encrypted** in the Neev One database and are never returned by
+**AES-256-GCM encrypted** in the CLOR database and are never returned by
 any API — the settings form only shows *whether* a secret is on file. All
 IRP calls happen server-side; the browser never sees credentials.
 
@@ -97,7 +97,7 @@ The sandbox is free and safe — IRNs generated there are not legal documents.
    creation).
 4. During registration you declare your **public IP address** — the sandbox
    only accepts calls from whitelisted IPs. Use the public IP of the machine
-   running the Neev One server (`curl ifconfig.me` shows it).
+   running the CLOR server (`curl ifconfig.me` shows it).
 5. Download the **sandbox public key** (Certificates section of the sandbox
    portal) — a `.pem` file beginning `-----BEGIN PUBLIC KEY-----`.
 
@@ -108,7 +108,7 @@ differ between sandbox and production.
 
 ---
 
-## 5. Configuring Neev One
+## 5. Configuring CLOR
 
 1. **Settings → Features** → enable **"e-Invoice and e-Way Bill JSON"**
    (the `einvoice` feature flag).
@@ -179,7 +179,7 @@ hand. Same schema, no API needed.
 | "Duplicate IRN" | The same invoice (GSTIN + doc type + number + FY) is already registered — the IRP enforces uniqueness. |
 | "Register the invoice on the IRP first" | e-Way Bill was requested before the IRN exists. |
 | "e-Invoicing is switched off" | Enable the feature under Settings → Features. |
-| Errors after ~1 hour of use | Token expiry — Neev One re-authenticates automatically on the next call; a one-off failure between the two is normal in the sandbox. |
+| Errors after ~1 hour of use | Token expiry — CLOR re-authenticates automatically on the next call; a one-off failure between the two is normal in the sandbox. |
 
 ---
 
@@ -191,7 +191,7 @@ hand. Same schema, no API needed.
 | Generate IRN | `POST /eicore/v1.03/Invoice` |
 | e-Way Bill by IRN | `POST /eiewb/v1.03/ewaybill` |
 
-| Where things live in Neev One | |
+| Where things live in CLOR | |
 |---|---|
 | Settings UI | Settings → Tax & Compliance → e-Invoice (IRP) |
 | Server service | `server/src/services/einvoice.ts` |

@@ -58,6 +58,18 @@ const fillMinimum = async (user, name = 'Umbrella Chemicals') => {
 beforeEach(() => vi.clearAllMocks());
 
 describe('the vendor form is the customer form, re-labelled', () => {
+  it('asks which branch carries a non-zero opening balance when multiple branches exist', async () => {
+    const user = userEvent.setup();
+    render(<VendorForm
+      db={{ ...db, branches: [{ id: 10, companyId: 1, name: 'Head Office' }, { id: 20, companyId: 1, name: 'South Branch' }] }}
+      setDb={() => {}}
+      currentCompany={company}
+      onClose={() => {}}
+    />);
+    await user.type(screen.getByLabelText('Opening Balance'), '750');
+    expect(screen.getByLabelText('Opening Balance Branch')).toBeRequired();
+  });
+
   it('carries the same tabs', () => {
     renderVendor();
     for (const name of ['Address', 'Contacts', 'Credit Details', 'Statutory Details', 'Others']) {

@@ -95,8 +95,10 @@ export default function LandingPage({ onSignIn, onGetStarted }) {
       >
         <div className="ui-container flex h-16 items-center justify-between gap-4">
           <a href="#top" className="flex items-center gap-2.5">
-            <ClorMark size={26} />
-            <span className="ui-display text-lg">Clor</span>
+            <span className="ui-brand-mark">
+              <img src="/clor-logo.png" alt="" aria-hidden="true" />
+            </span>
+            <span className="ui-display text-lg">CLOR</span>
           </a>
 
           {/*
@@ -151,26 +153,16 @@ export default function LandingPage({ onSignIn, onGetStarted }) {
         <div className="ui-ambient" aria-hidden="true" />
         <div className="ui-container ui-section relative">
           <div className="max-w-3xl ui-stagger">
-            {/*
-              The platform, not one of its applications.
-
-              This hero pitched double-entry bookkeeping, from when Accounting
-              was the whole product. It is now one app of four, and somebody
-              arriving should learn what Clor is before they learn what its
-              ledger does. The specimen below still shows a real trial balance,
-              because a claim about software is worth less than the thing
-              itself.
-            */}
-            <p className="ui-eyebrow">Business software · India</p>
+            <p className="ui-eyebrow">CLOR · Business accounting</p>
 
             <h1 className="ui-display mt-4 text-[clamp(2.5rem,6vw,4.25rem)]">
               One platform. One set of records.
             </h1>
 
             <p className="ui-lede mt-6">
-              Clor runs your books, your payroll and your people on the same records. Salaries post
-              themselves into the ledger, nobody exports a file to anybody, and the month closes
-              because the numbers already agree — not because somebody reconciled them.
+              CLOR posts every invoice, receipt, bill and journal to a real double-entry ledger
+              the moment you save it. No month-end reconciliation ritual, no spreadsheet standing in
+              for the truth.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -230,7 +222,7 @@ export default function LandingPage({ onSignIn, onGetStarted }) {
                     ['4000 · Sales Accounts', '', '3,45,000.00'],
                   ].map(([account, debit, credit]) => (
                     <tr key={account}>
-                      <td className="ui-mono text-[0.8125rem]">{account}</td>
+                      <td className="ui-mono text-sm">{account}</td>
                       <td className="ui-num text-right">{debit || '—'}</td>
                       <td className="ui-num text-right">{credit || '—'}</td>
                     </tr>
@@ -416,8 +408,8 @@ export default function LandingPage({ onSignIn, onGetStarted }) {
 
       <footer className="border-t" style={{ borderColor: 'rgb(var(--border))' }}>
         <div className="ui-container flex flex-wrap items-center justify-between gap-3 py-7 text-sm ui-subtle">
-          <span>© 2026 Clor</span>
-          <span>Self-hosted GST accounting</span>
+          <span>© 2026 CLOR</span>
+          <span>Business accounting by CLOR</span>
         </div>
       </footer>
     </div>

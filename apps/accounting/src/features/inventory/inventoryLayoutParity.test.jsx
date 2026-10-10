@@ -95,6 +95,8 @@ const PAGES = [
     name: 'Stock Adjustments',
     heading: /Stock Adjustments/i,
     search: /Search adjustments/i,
+    filterInHeader: true,
+    filterLabel: 'Adjustment filter',
     render: () => <StockAdjustments db={db} setDb={noop} currentCompany={COMPANY} warehouses={warehouses} branches={branches} />,
   },
   {
@@ -107,6 +109,8 @@ const PAGES = [
     name: 'Batch Stock',
     heading: /Batch Stock & Expiry/i,
     search: /Search batches/i,
+    filterInHeader: true,
+    filterLabel: 'Batch filter',
     render: () => <BatchStock db={db} currentCompany={COMPANY} />,
   },
   {
@@ -145,6 +149,13 @@ describe.each(PAGES)('$name, laid out like every other list', (page) => {
 
   it('offers its filters as tabs with counts', () => {
     render(page.render());
+    if (page.filterInHeader) {
+      const filter = screen.getByRole('combobox', { name: page.filterLabel });
+      expect(filter).toBeTruthy();
+      expect(within(filter).getAllByRole('option').length).toBeGreaterThanOrEqual(3);
+      expect(filter.value).toBe('ALL');
+      return;
+    }
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab');
     expect(tabs.length).toBeGreaterThanOrEqual(3);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');

@@ -67,7 +67,7 @@ const buildColumns = (columns) =>
     };
   });
 
-export async function exportListXlsx({ subtitle = '', fileName, columns, rows, sheetName = 'Export' }) {
+export async function exportListXlsx({ subtitle = '', fileName, columns, rows, sheetName = 'Export', metaLines = [], footerRows = [], reportStyle = 'default' }) {
   if (!Array.isArray(rows) || !rows.length) {
     notify.error('Nothing to export in the current view.');
     return;
@@ -81,14 +81,54 @@ export async function exportListXlsx({ subtitle = '', fileName, columns, rows, s
     // v4 returns { toBlob, toFile } and saves nothing on its own. Awaiting the
     // call and passing a fileName — the v2 shape — produces no file and no
     // error: the button works, and nothing arrives.
-    const workbook = writeXlsxFile(rows, {
+    const polished = reportStyle === 'statement';
+    const border = polished ? { borderColor: '#E2E8F0', borderStyle: 'thin' } : {};
+    const cellFor = (col, row, extra = {}) => {
+      const value = raw(col, row);
+      if (isNumeric(col)) {
+        const number = Number(value);
+        return { value: Number.isFinite(number) ? number : null, type: Number, format: '#,##,##0.00', align: 'right', ...border, ...extra };
+      }
+      return { value: value === null || value === undefined ? '' : String(value), type: String, wrap: true, ...border, ...extra };
+    };
+    const sheet = String(sheetName || 'Export').replace(/[\\/?*[\]:]/g, ' ').slice(0, 31) || 'Export';
+    const options = polished ? {
+      sheet,
+      stickyRowsCount: metaLines.length + 3,
+      showGridLines: false,
+      columns: cols.map((col) => ({ width: isNumeric(col) ? 16 : Math.max(14, Math.min(34, String(col.label).length + 8)) })),
+    } : {
       columns: buildColumns(cols),
       // Excel truncates a sheet name past 31 characters and refuses several
       // punctuation marks outright, so it is trimmed here rather than failing
       // at save time.
-      sheet: String(sheetName || 'Export').replace(/[\\/?*[\]:]/g, ' ').slice(0, 31) || 'Export',
+      sheet,
       stickyRowsCount: 1,
-    });
+    };
+    const excelRows = polished ? [
+      ...metaLines.map((line, index) => {
+        const isLedgerTitle = String(line).startsWith('Ledger Statement');
+        return [{
+        value: String(line), type: String, columnSpan: cols.length,
+        fontWeight: index === 0 || isLedgerTitle ? 'bold' : undefined, fontSize: index === 0 ? 16 : (isLedgerTitle ? 12 : 10),
+        textColor: index === 0 || isLedgerTitle ? '#0F172A' : '#64748B',
+        align: 'left', height: index === 0 ? 28 : 20,
+      }];
+      }),
+      [{}], [{}],
+      cols.map((col) => ({
+        value: String(col.label), type: String, fontWeight: 'bold',
+        backgroundColor: '#F5F7FA', textColor: '#0F172A',
+        align: isNumeric(col) ? 'right' : 'left',
+        borderColor: '#E2E8F0', borderStyle: 'thin', height: 24,
+      })),
+      ...rows.map((row) => cols.map((col) => cellFor(col, row, { backgroundColor: '#FFFFFF' }))),
+      ...footerRows.map((row) => cols.map((col) => cellFor(col, row, {
+        backgroundColor: '#F5F7FA', textColor: '#0F172A', fontWeight: 'bold',
+        borderColor: '#E2E8F0', borderStyle: 'thin',
+      }))),
+    ] : rows;
+    const workbook = writeXlsxFile(excelRows, options, polished ? { fontFamily: 'Inter', fontSize: 10 } : undefined);
     await workbook.toFile(`${fileName || 'export'}.xlsx`);
 
     notify.success(

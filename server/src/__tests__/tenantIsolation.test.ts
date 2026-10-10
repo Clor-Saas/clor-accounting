@@ -6,7 +6,7 @@ import { prisma } from '../utils/prisma.js';
 /**
  * One tenant must not be able to reach another tenant's records.
  *
- * Neev One is pooled: one database, every row carrying an orgId, every query
+ * CLOR is pooled: one database, every row carrying an orgId, every query
  * expected to filter on it. That is the right model for this product and the
  * cheap one — and its single failure mode is a query that forgets the filter.
  *

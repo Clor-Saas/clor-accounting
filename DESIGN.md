@@ -1,4 +1,4 @@
-# Design System — Neev One
+# Design System — CLOR
 
 Preview (rendered): https://claude.ai/code/artifact/b5f06c26-a4de-4879-979f-fbb1e88ad45a
 

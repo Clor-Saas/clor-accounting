@@ -33,8 +33,11 @@ const PopupSelect = ({
      and no <label> element can point at the trigger. */
   ariaLabel = '',
   allowCustom = false,
+  alwaysSearch = false,
   customActionText = 'Use',
   onCustomAction,
+  actionText = '',
+  onAction,
   showValueSubtext = true,
   title,
   /* A lucide component drawn inside the control, before the value — the
@@ -82,7 +85,7 @@ const PopupSelect = ({
     });
   }, [normalizedQuery, options]);
 
-  const showSearch = (options || []).length >= SEARCH_THRESHOLD;
+  const showSearch = alwaysSearch || (options || []).length >= SEARCH_THRESHOLD;
 
   const normalizedValue = String(value || '').trim();
   const displayLabel = useMemo(() => {
@@ -283,6 +286,20 @@ const PopupSelect = ({
                 placeholder={`Search ${String(title || label || '').toLowerCase() || 'options'}…`}
               />
             </div>
+          ) : null}
+
+          {actionText && typeof onAction === 'function' ? (
+            <button
+              type="button"
+              onClick={() => {
+                closePopup({ advance: true });
+                onAction();
+              }}
+              className="w-full border-b px-3 py-2.5 text-left text-sm font-semibold ui-hover-sunken"
+              style={{ color: 'rgb(var(--brand))' }}
+            >
+              {actionText}
+            </button>
           ) : null}
 
           {canUseCustom && !customIsAlreadyOption ? (

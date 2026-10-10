@@ -47,6 +47,40 @@ describe('InvoicePreview', () => {
     const db = { companies: [COMPANY], customers: [], uoms: [], gstRates: [], items: [] };
     render(<InvoicePreview db={db} currentCompany={COMPANY} invoice={invoiceWith([LINE])} />);
     expect(screen.getByText(/INV-3/)).toBeInTheDocument();
-    expect(screen.getByText(/Acme Traders/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Acme Traders/).length).toBeGreaterThan(0);
   });
+
+  it('uses the saved print title and hides customer GSTIN from the customer copy', () => {
+    const company = {
+      ...COMPANY,
+      docSettings: {
+        templates: {
+          invoice: {
+            printTitle: 'COMMERCIAL INVOICE',
+            printOptions: { customerGstin: false },
+          },
+        },
+      },
+    };
+    const db = { companies: [company], customers: [], uoms: [], gstRates: [], items: [] };
+    render(<InvoicePreview db={db} currentCompany={company} invoice={invoiceWith([LINE])} />);
+    expect(screen.getByText('COMMERCIAL INVOICE')).toBeInTheDocument();
+    expect(screen.queryByText(/29AAAAA0000A1Z5/)).not.toBeInTheDocument();
+  });
+
+  it.each(['modern', 'minimal', 'compact', 'bold', 'classic', 'a4Modern', 'a4BoxedGst', 'a4Letterhead', 'a5', 'a5Compact', 'a5Clean', 'a5Boxed'])(
+    'prints the saved company logo in the %s template',
+    (templateId) => {
+      const company = {
+        ...COMPANY,
+        logo: 'data:image/png;base64,Y29tcGFueS1sb2dv',
+        docSettings: { templates: { invoice: { templateId } } },
+      };
+      const db = { companies: [company], customers: [], uoms: [], gstRates: [], items: [] };
+
+      render(<InvoicePreview db={db} currentCompany={company} invoice={invoiceWith([LINE])} />);
+
+      expect(screen.getByAltText('Neev Steels logo')).toHaveAttribute('src', company.logo);
+    },
+  );
 });

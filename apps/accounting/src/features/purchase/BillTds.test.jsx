@@ -17,6 +17,7 @@ vi.mock('@ui/permissions/useFeatures', () => ({
 }));
 vi.mock('@ui/api/purchaseDocs', () => ({
   createDocApi: vi.fn(async () => ({})),
+  updateDocApi: vi.fn(async () => ({})),
   hasApiSession: () => false,
 }));
 
@@ -74,10 +75,11 @@ const dbWith = (over = {}) => ({
   uoms: [],
   gstRates: [],
   debitNotes: [],
+  tdsTransactions: [],
   ...over,
 });
 
-const Host = ({ db: seed = dbWith(), onSaved = () => {} }) => {
+const Host = ({ db: seed = dbWith(), initialData = null, onSaved = () => {} }) => {
   const [db, setDb] = useState(seed);
   return (
     <BillForm
@@ -88,12 +90,72 @@ const Host = ({ db: seed = dbWith(), onSaved = () => {} }) => {
         setDb(value);
       }}
       currentCompany={db.companies[0]}
+      initialData={initialData}
       branches={[{ id: 'b1', companyId: 1, name: 'Bengaluru' }]}
       warehouses={[{ id: 'w1', companyId: 1, name: 'Main Store', branchId: 'b1' }]}
       onClose={() => {}}
     />
   );
 };
+
+describe('editing a bill with TDS', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('replaces the bill and its TDS event instead of creating duplicates', async () => {
+    const user = userEvent.setup();
+    const existingBill = {
+      id: 7,
+      companyId: 1,
+      number: 'BILL-7',
+      date: '2026-09-26',
+      dueDate: '2026-10-26',
+      vendorId: 9,
+      vendorName: 'Steel Supply Co',
+      warehouseId: 'w1',
+      branchId: 'b1',
+      status: 'Partial',
+      paidAmount: 10000,
+      items: [{ itemId: 11, description: 'MS Angle 50mm', quantity: 1, rate: 50000, gstRate: 18, hsnSac: '' }],
+      subtotal: 50000,
+      cgstTotal: 4500,
+      sgstTotal: 4500,
+      igstTotal: 0,
+      gstTotal: 9000,
+      total: 59000,
+      tdsLedgerId: '101',
+      tdsNatureCode: CONTRACTOR,
+      tdsSection: '194C',
+      tdsRate: 2,
+      tdsAmount: 1000,
+      netPayable: 58000,
+    };
+    const existingEvent = {
+      id: 30,
+      companyId: 1,
+      sourceType: 'bill',
+      sourceId: 7,
+      sourceNumber: 'BILL-7',
+      status: 'Posted',
+    };
+    let savedDb = null;
+
+    render(
+      <Host
+        db={dbWith({ bills: [existingBill], tdsTransactions: [existingEvent] })}
+        initialData={existingBill}
+        onSaved={(next) => { savedDb = next; }}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Update Bill' }));
+    await waitFor(() => expect(savedDb).not.toBeNull());
+
+    expect(savedDb.bills).toHaveLength(1);
+    expect(savedDb.bills[0]).toMatchObject({ id: 7, number: 'BILL-7', status: 'Partial', paidAmount: 10000 });
+    expect(savedDb.tdsTransactions).toHaveLength(1);
+    expect(savedDb.tdsTransactions[0]).toMatchObject({ id: 30, sourceType: 'bill', sourceId: 7 });
+  });
+});
 
 /** A bill for one line at `rate`, ready to save. */
 const fillBill = async (user, rate) => {
@@ -116,31 +178,36 @@ const fillBill = async (user, rate) => {
 /** Open the panel and choose a nature — the ledger then follows from it. */
 const chooseNature = async (user, natureCode) => {
   await user.click(screen.getByRole('button', { name: /TDS deduction/ }));
-  await user.selectOptions(screen.getByLabelText(/TDS deduction/), natureCode);
+  const ledgerId = natureCode === PROFESSIONAL ? '102' : '101';
+  await user.selectOptions(screen.getByLabelText('TDS'), ledgerId);
 };
 
 describe('choosing what to deduct against', () => {
   beforeEach(() => localStorage.clear());
 
-  it('offers the natures, not a list of sections to look up', async () => {
+  it('offers the configured TDS ledgers in one selector', async () => {
     const user = userEvent.setup();
     render(<Host />);
     await user.click(screen.getByRole('button', { name: /TDS deduction/ }));
 
-    const options = [...screen.getByLabelText(/TDS deduction/).options].map((o) => o.textContent);
-    expect(options).toContain('Contractor / sub-contractor');
-    expect(options).toContain('Professional services');
+    const options = [...screen.getByLabelText('TDS').options].map((o) => o.textContent);
+    expect(options).toContain('TDS on Contractors');
+    expect(options).toContain('TDS on Professional Fees');
   });
 
-  /* §14, and mandatory: a Contractor deduction offers the Contractor ledger
-     and nothing else — not another nature's, and not the receivable side. */
-  it('narrows the ledger list to the chosen nature and the payable side', async () => {
+  /* The payable ledger is inferred from the nature. Asking for both makes the
+     same accounting choice appear twice and allows an unnecessary mismatch. */
+  it('derives the percentage from the selected ledger without a section selector', async () => {
     const user = userEvent.setup();
     render(<Host />);
     await chooseNature(user, CONTRACTOR);
 
-    const options = [...screen.getByLabelText('TDS ledger').options].map((o) => o.textContent);
-    expect(options).toEqual(['Select ledger', 'TDS on Contractors']);
+    expect(screen.queryByLabelText('TDS section')).not.toBeInTheDocument();
+    // With no vendor selected there is no PAN on the transaction yet, so the
+    // engine correctly surfaces the statutory 20% no-PAN rate immediately.
+    expect(screen.getByLabelText('%')).toHaveValue(20);
+    expect(screen.queryByLabelText('Payee')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument();
   });
 
   /* Prompt 13's first trigger: the VENDOR's own applicability. A vendor
@@ -154,11 +221,10 @@ describe('choosing what to deduct against', () => {
     render(<Host db={dbWith({ vendors })} />);
     await fillBill(user, 100000);
 
-    /* No click on the opener — the engine already answered from the party
-       profile: 2% on ₹1,00,000, shown under the total with a Change link. */
-    expect(await screen.findByText(/Less: TDS/)).toBeInTheDocument();
-    expect(screen.getByText(/2,000\.00/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    /* No click on the opener — the engine already answers from the party
+       profile and shows the deduction once in the compact TDS row. */
+    expect(await screen.findByLabelText('TDS amount')).toHaveTextContent(/2,000\.00/);
+    expect(screen.queryByText(/Less: TDS/)).not.toBeInTheDocument();
   });
 
   it('deducts nothing at all while TDS is switched off for the company', () => {

@@ -1,4 +1,5 @@
 import { Info, MapPin, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 import PopupSelect from '@ui/components/pickers/PopupSelect';
 
@@ -28,6 +29,19 @@ export const CURRENCY_OPTIONS = [
   { value: 'AED', label: 'AED - UAE Dirham' },
   { value: 'SGD', label: 'SGD - Singapore Dollar' },
 ];
+
+const countriesFrom = (api) => api ? api.Country.getAllCountries() : [{ isoCode: 'IN', name: 'India' }];
+const countryByName = (api, name) => countriesFrom(api).find((country) => country.name === name);
+const statesForCountry = (api, countryName) => {
+  const country = countryByName(api, countryName);
+  return country && api ? api.State.getStatesOfCountry(country.isoCode) : [];
+};
+const citiesForState = (api, countryName, stateName) => {
+  const country = countryByName(api, countryName);
+  if (!country || !api) return [];
+  const state = statesForCountry(api, countryName).find((entry) => entry.name === stateName);
+  return state ? api.City.getCitiesOfState(country.isoCode, state.isoCode) : [];
+};
 
 /**
  * Label on the left, control on the right, explanation behind the icon.
@@ -224,6 +238,135 @@ const AddressCard = ({ row, index, states, onChange, onRemove, tone, title, subt
   );
 };
 
+const CustomerAddressTable = ({ rows, states, onChange, onAdd, onRemove, sameAsBilling, onSameAsBilling }) => {
+  const [locationApi, setLocationApi] = useState(null);
+  useEffect(() => {
+    let active = true;
+    import('country-state-city').then((api) => {
+      if (active) setLocationApi(api);
+    });
+    return () => { active = false; };
+  }, []);
+  const addressCountries = countriesFrom(locationApi);
+  return (
+  <section className="customer-address-table space-y-2">
+    <div className="overflow-visible rounded border border-[rgb(var(--border))]">
+      <table className="w-full table-fixed border-collapse text-sm">
+        <colgroup>
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '22%' }} />
+          <col style={{ width: '22%' }} />
+          <col style={{ width: '10%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '10%' }} />
+          <col style={{ width: '8%' }} />
+          <col style={{ width: '4%' }} />
+        </colgroup>
+        <thead>
+          <tr>
+            {['Location name', 'Address Line 1', 'Address Line 2', 'Country', 'State', 'City', 'PIN', ''].map((heading) => (
+              <th key={heading || 'actions'} className="ui-t-label border-e border-[rgb(var(--border))] px-2 py-1.5 text-left last:border-e-0">
+                {heading}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => {
+            const linked = index === 1 && sameAsBilling;
+            const locationName = index === 0 ? 'Billing' : index === 1 ? 'Shipping' : row.label || `Address ${index - 1}`;
+            const countryStates = locationApi
+              ? statesForCountry(locationApi, row.country)
+              : row.country === 'India'
+                ? states.map((state) => ({ isoCode: state.code, name: state.name }))
+                : [];
+            const stateCities = citiesForState(locationApi, row.country, row.state);
+            return (
+              <tr key={row.key ?? index}>
+                <td className="border-e border-t border-[rgb(var(--border))] p-1 align-middle">
+                  <div className="flex min-w-0 items-center gap-1">
+                    <input
+                      value={locationName}
+                      onChange={(event) => onChange(index, 'label', event.target.value)}
+                      readOnly={row.builtIn}
+                      className="ui-input min-w-0 flex-1"
+                      aria-label={`Location name, address ${index + 1}`}
+                    />
+                  {index === 1 && onSameAsBilling ? (
+                    <label className="inline-flex shrink-0 cursor-pointer items-center" title="Same as billing">
+                      <input type="checkbox" className="ui-checkbox" checked={sameAsBilling} onChange={(event) => onSameAsBilling(event.target.checked)} />
+                      <span className="sr-only">Same as billing</span>
+                    </label>
+                  ) : null}
+                  </div>
+                </td>
+                {[
+                  ['line1', 'Address Line 1'],
+                  ['line2', 'Address Line 2'],
+                ].map(([key, label]) => (
+                  <td key={key} className="border-e border-t border-[rgb(var(--border))] p-1 align-middle">
+                    <input id={key === 'line1' ? `customer-address-${index}-line1` : undefined} value={row[key] || ''} onChange={(event) => onChange(index, key, event.target.value)} disabled={linked} className="ui-input w-full" aria-label={label} />
+                  </td>
+                ))}
+                <td className="border-e border-t border-[rgb(var(--border))] p-1 align-middle">
+                  <select
+                    value={row.country || ''}
+                    onChange={(event) => {
+                      onChange(index, 'country', event.target.value);
+                      onChange(index, 'state', '');
+                      onChange(index, 'city', '');
+                    }}
+                    disabled={linked}
+                    className="ui-select w-full"
+                    aria-label={`Country, address ${index + 1}`}
+                  >
+                    <option value="">Country</option>
+                    {addressCountries.map((country) => <option key={country.isoCode} value={country.name}>{country.name}</option>)}
+                    {row.country && !addressCountries.some((country) => country.name === row.country) ? <option value={row.country}>{row.country}</option> : null}
+                  </select>
+                </td>
+                <td className="border-e border-t border-[rgb(var(--border))] p-1 align-middle">
+                  <select value={row.state || ''} onChange={(event) => { onChange(index, 'state', event.target.value); onChange(index, 'city', ''); }} disabled={linked || !row.country} className="ui-select w-full" aria-label={`State, address ${index + 1}`}>
+                    <option value="">Select</option>
+                    {countryStates.map((state) => <option key={state.isoCode} value={state.name}>{state.name}</option>)}
+                    {row.state && !countryStates.some((state) => state.name === row.state) ? <option value={row.state}>{row.state}</option> : null}
+                  </select>
+                </td>
+                <td className="border-e border-t border-[rgb(var(--border))] p-1 align-middle">
+                  <select value={row.city || ''} onChange={(event) => onChange(index, 'city', event.target.value)} disabled={linked || !row.state} className="ui-select w-full" aria-label={`City, address ${index + 1}`}>
+                    <option value="">City</option>
+                    {stateCities.map((city) => <option key={`${city.name}-${city.latitude}-${city.longitude}`} value={city.name}>{city.name}</option>)}
+                    {row.city && !stateCities.some((city) => city.name === row.city) ? <option value={row.city}>{row.city}</option> : null}
+                  </select>
+                </td>
+                <td className="border-e border-t border-[rgb(var(--border))] p-1 align-middle">
+                  <input value={row.pincode || ''} onChange={(event) => onChange(index, 'pincode', event.target.value)} disabled={linked} className="ui-input ui-mono w-full" maxLength={10} aria-label="Pincode" />
+                </td>
+                <td className="border-t border-[rgb(var(--border))] p-1 text-center align-middle">
+                  <button
+                    type="button"
+                    className="customer-address-delete ui-icon-btn mx-auto text-[rgb(var(--neg))] disabled:cursor-not-allowed disabled:opacity-30"
+                    aria-label={`Delete ${locationName}`}
+                    title={row.builtIn ? `${locationName} cannot be deleted` : `Delete ${locationName}`}
+                    disabled={row.builtIn}
+                    onClick={() => onRemove(index)}
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+    <button type="button" onClick={onAdd} className="ui-btn ui-btn-ghost ui-btn-sm px-1">
+      <Plus size={14} aria-hidden="true" /> Add Address
+    </button>
+  </section>
+  );
+};
+
 export const AddressTab = ({
   rows,
   states,
@@ -241,12 +384,22 @@ export const AddressTab = ({
      line of fields the way a contact person is. */
   variant = 'cards',
 }) => (
-  variant === 'table' ? (
+  variant === 'customer-table' ? (
+    <CustomerAddressTable
+      rows={rows}
+      states={states}
+      onChange={onChange}
+      onAdd={onAdd}
+      onRemove={onRemove}
+      sameAsBilling={sameAsBilling}
+      onSameAsBilling={onSameAsBilling}
+    />
+  ) : variant === 'table' ? (
     <section className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h4 className="ui-t-sec">Address</h4>
-          <p className="ui-caption mt-0.5">{caption}</p>
+          <h4 className="party-section-title ui-t-sec">Address</h4>
+          <p className="party-section-copy ui-caption mt-0.5">{caption}</p>
         </div>
         <button type="button" onClick={onAdd} className="ui-btn ui-btn-secondary shrink-0">
           <Plus size={16} aria-hidden="true" /> Add Address
@@ -322,8 +475,8 @@ export const AddressTab = ({
   <section className="space-y-4">
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <h4 className="ui-t-sec">Address</h4>
-        <p className="ui-caption mt-0.5">{caption}</p>
+        <h4 className="party-section-title ui-t-sec">Address</h4>
+        <p className="party-section-copy ui-caption mt-0.5">{caption}</p>
       </div>
 
       {/* At the head of the group it adds to, where the mockup puts it and
@@ -392,8 +545,8 @@ export const ContactsTab = ({
 }) => (
   <section className="space-y-3">
     <div>
-      <h4 className="ui-t-sec">{heading}</h4>
-      <p className="ui-caption mt-0.5">{caption}</p>
+      <h4 className="party-section-title ui-t-sec">{heading}</h4>
+      <p className="party-section-copy ui-caption mt-0.5">{caption}</p>
     </div>
 
     {/*

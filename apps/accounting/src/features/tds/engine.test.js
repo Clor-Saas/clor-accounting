@@ -168,6 +168,19 @@ describe('the figure', () => {
     expect(result.thresholdReason).toBeTruthy();
   });
 
+  it('can deduct below the statutory threshold when the company explicitly chooses it', () => {
+    const result = ask({ company: company({ thresholdHandling: 'ALWAYS_DEDUCT' }), taxableBase: 10000 });
+    expect(result.thresholdCrossed).toBe(true);
+    expect(result.tdsAmount).toBe(200);
+  });
+
+  it('applies the configured round-off preference', () => {
+    const exact = ask({ company: company({ roundOffPreference: 'TWO_DECIMALS' }), taxableBase: 100033, explicitRate: 0.5 });
+    const rounded = ask({ company: company({ roundOffPreference: 'NEAREST_RUPEE' }), taxableBase: 100033, explicitRate: 0.5 });
+    expect(exact.tdsAmount).toBe(500.17);
+    expect(rounded.tdsAmount).toBe(500);
+  });
+
   /* Once the annual limit is passed the whole aggregate is liable, earlier
      bills included — so the figure has to know what came before it. */
   it('counts what the party was already billed this year', () => {

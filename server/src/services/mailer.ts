@@ -21,7 +21,7 @@ import { TEMPLATE_BY_KEY, render } from '../constants/emailTemplates.js';
  *    suite honest about content without needing a mail server.
  */
 
-const APP_NAME = process.env.APP_NAME || 'Accounting';
+const APP_NAME = process.env.APP_NAME || 'CLOR';
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 
 // ---------------------------------------------------------------------------

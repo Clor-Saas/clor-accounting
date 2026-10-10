@@ -192,7 +192,7 @@ const FeatureRow = ({ row, section, model, onNavigate }) => {
           switched on. No screen, no link — a row is not made consistent by
           inventing somewhere for it to go. */}
       <span className="flex-none" style={{ width: '6.25rem' }}>
-        {row.config && row.enabled && onNavigate ? (
+        {row.config && (row.enabled || row.readOnly) && onNavigate ? (
           <button type="button" onClick={() => onNavigate(row.config)} className="ui-feature-config">
             Configure <ArrowRight size={14} aria-hidden="true" />
           </button>

@@ -71,7 +71,7 @@ export const DocHeaderStrip = ({
             aria-invalid={numberError ? true : undefined}
             aria-describedby={numberError ? 'doc-number-error' : undefined}
             data-invalid={numberError ? 'true' : undefined}
-            className={`ui-input ui-mono !min-h-0 !py-1 !text-[13px] w-full${numbering ? ' pe-8' : ''}`}
+            className={`ui-input ui-mono !min-h-0 !py-1 !text-sm w-full${numbering ? ' pe-8' : ''}`}
           />
           {numbering ? (
             <button
@@ -127,7 +127,7 @@ export const DocHeaderStrip = ({
           required
           aria-invalid={dateError ? true : undefined}
           data-invalid={dateError ? 'true' : undefined}
-          className="ui-input !min-h-0 !py-1 !text-[13px] !w-40"
+          className="ui-input !min-h-0 !py-1 !text-sm !w-40"
         />
         {dateError ? <p role="alert" className="ui-field-error">{dateError}</p> : null}
       </div>
@@ -142,7 +142,7 @@ export const DocHeaderStrip = ({
             type="date"
             value={dueDate ?? ''}
             onChange={(e) => onDueDateChange(e.target.value)}
-            className="ui-input !min-h-0 !py-1 !text-[13px] !w-40"
+            className="ui-input !min-h-0 !py-1 !text-sm !w-40"
           />
         </div>
       ) : null}

@@ -77,6 +77,7 @@ export const tdsPayableLedgers = (db, companyId) => {
   return (db?.chartOfAccounts || [])
     .filter((a) => String(a?.companyId) === String(companyId))
     .filter((a) => a?.isActive !== false)
+    .filter((a) => a?.tdsRateActive !== false)
     .filter((a) => isTdsPayableGroup(groups, a?.groupId))
     .slice()
     .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
@@ -91,8 +92,10 @@ export const tdsPayableLedgers = (db, companyId) => {
  * place rates live.
  */
 export const tdsLedgerRate = (ledger, deducteeType = 'COMPANY') => {
+  const individual = Number(ledger?.tdsRateIndividual);
+  if (deducteeType === 'INDIVIDUAL' && Number.isFinite(individual) && individual >= 0) return individual;
   const own = Number(ledger?.tdsRate);
-  if (Number.isFinite(own) && own > 0) return own;
+  if (Number.isFinite(own) && own >= 0 && ledger?.tdsRate !== '' && ledger?.tdsRate != null) return own;
   const code = String(ledger?.tdsSection || '').trim();
   if (!code) return 0;
   return Number(tdsDefaultRate(code, deducteeType)) || 0;

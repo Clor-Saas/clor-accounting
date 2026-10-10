@@ -113,6 +113,41 @@ describe('expense vouchers on the server', () => {
     expect(list.body.documents.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('updates the same expense and replaces its ledger posting', async () => {
+    const created = await request(app)
+      .post(`/api/orgs/${A.orgId}/expenses`)
+      .set(auth(A))
+      .send(expensePayload({ partyName: 'Professional Vendor', subtotal: 1500, cgstTotal: 0, sgstTotal: 0, gstTotal: 0, total: 1500 }))
+      .expect(201);
+
+    const id = created.body.document.id;
+    const number = created.body.document.number;
+    const updated = await request(app)
+      .patch(`/api/orgs/${A.orgId}/expenses/${id}`)
+      .set(auth(A))
+      .send(expensePayload({
+        number,
+        partyName: 'Professional Vendor',
+        description: 'Corrected professional fees',
+        subtotal: 2500,
+        cgstTotal: 0,
+        sgstTotal: 0,
+        gstTotal: 0,
+        total: 2500,
+        items: [{ description: 'Professional fees', quantity: 1, rate: 2500, gstRate: 0 }],
+      }))
+      .expect(200);
+
+    expect(updated.body.document).toMatchObject({ id, number, total: 2500, description: 'Corrected professional fees' });
+
+    const list = await request(app).get(`/api/orgs/${A.orgId}/expenses`).set(auth(A)).expect(200);
+    expect(list.body.documents.filter((doc: any) => doc.id === id)).toHaveLength(1);
+    expect(list.body.documents.find((doc: any) => doc.id === id)?.total).toBe(2500);
+
+    const tb = await request(app).get(`/api/orgs/${A.orgId}/ledger/trial-balance`).set(auth(A)).expect(200);
+    expect(tb.body.totals.balanced).toBe(true);
+  });
+
   it('respects the expenses feature switch', async () => {
     const current = await request(app).get(`/api/orgs/${A.orgId}/features`).set(auth(A)).expect(200);
     await request(app)

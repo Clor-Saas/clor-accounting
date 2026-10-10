@@ -121,16 +121,6 @@ export default function Salesmen({ db, setDb, currentCompany }) {
   };
   const shownPerf = smStatus ? smSearch.filtered.filter((r) => smMatches(r, smStatus)) : smSearch.filtered;
 
-  const smStatusCounts = useMemo(() => {
-    const counts = { '': smSearch.filtered.length };
-    for (const t of SM_STATUS_TABS) {
-      if (!t.value) continue;
-      counts[t.value] = smSearch.filtered.filter((r) => smMatches(r, t.value)).length;
-    }
-    return counts;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [smSearch.filtered]);
-
   /*
    * Sales are pre-GST on purpose: commission on tax collected for the
    * government would pay the team for money that was never the business's.
@@ -161,9 +151,11 @@ export default function Salesmen({ db, setDb, currentCompany }) {
   return (
     <DocumentListShell
       entity="salesperson"
+      className="sales-list-page"
       title="Salesmen"
       company={currentCompany}
       search={{
+        before: <select value={smStatus} onChange={(event) => setSmStatus(event.target.value)} className="ui-select ui-ctl-compact w-40" aria-label="Salesman filter">{SM_STATUS_TABS.map((item) => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select>,
         value: smSearch.query,
         onChange: smSearch.setQuery,
         placeholder: 'Search salesmen…',
@@ -197,16 +189,7 @@ export default function Salesmen({ db, setDb, currentCompany }) {
         { label: 'Sales (pre-GST)', value: smHeadline.sales, tone: 'partial', Icon: Receipt },
         { label: 'Commission due', value: smHeadline.commission, tone: 'outstanding', Icon: BadgeIndianRupee },
       ]}
-      tabs={SM_STATUS_TABS}
-      tabsLabel="Salesman filter"
-      statusValue={smStatus}
-      statusCounts={smStatusCounts}
-      onStatusChange={setSmStatus}
-      tip={{
-        storageKey: 'neev.tip.salesmen',
-        text: 'Commission is worked out on pre-GST sales — paying it on tax collected for the government would pay for money that was never yours.',
-        Icon: BadgeIndianRupee,
-      }}
+      denseCards
       above={
         <div className="ui-card p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -244,7 +227,7 @@ export default function Salesmen({ db, setDb, currentCompany }) {
         </div>
       }
     >
-      <div className="overflow-x-auto ui-table-scroll">
+      <div className="overflow-x-auto ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}>
           <table className="ui-table ui-table-wide ui-table-sticky">
             <thead>
               <tr>

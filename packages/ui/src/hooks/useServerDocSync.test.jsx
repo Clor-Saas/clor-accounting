@@ -85,6 +85,37 @@ beforeEach(() => {
  * side against a full bank statement.
  */
 describe('collections that were written through but never read back', () => {
+  it('keeps the fields required to edit a hydrated expense', async () => {
+    listDocsApi.mockImplementation(async (kind) => kind === 'expense' ? [{
+      id: 'expense-server-1',
+      number: 'EXP-1',
+      date: '2026-09-19',
+      dueDate: '2026-09-19',
+      partyId: 'vendor-server-1',
+      partyName: 'ABCDEF',
+      refNo: 'V-19',
+      description: 'Office expense',
+      subtotal: 1000,
+      gstTotal: 180,
+      total: 1180,
+      tdsAmount: 20,
+      tdsLedgerId: 'tds-ledger-1',
+      tdsLedgerName: 'TDS 194C',
+      items: [{ description: 'Office Expenses — Stationery', taxableAmount: 1000, gstRate: 18 }],
+    }] : []);
+
+    const book = await hydrate();
+    expect(book.expenses[0]).toMatchObject({
+      backendDocId: 'expense-server-1',
+      partyId: 'vendor-server-1',
+      vendorName: 'ABCDEF',
+      description: 'Office expense',
+      tdsAmount: 20,
+      tdsLedgerId: 'tds-ledger-1',
+    });
+    expect(book.expenses[0].items[0].description).toBe('Office Expenses — Stationery');
+  });
+
   it('brings delivery challans back', async () => {
     api.listDeliveryChallans.mockResolvedValue({
       documents: [

@@ -715,6 +715,7 @@ authRouter.post('/setup-company', async (req: Request, res: Response) => {
       accountId: auth.accountId,
       orgId: org.id,
       branchId: branch.id,
+      code: 'MAIN',
       name: 'Main Store',
       createdByUserId: auth.userId,
     },

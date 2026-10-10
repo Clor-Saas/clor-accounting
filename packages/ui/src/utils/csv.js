@@ -38,11 +38,14 @@ const cell = (v) => {
 };
 
 /** rows: array of objects. columns: [{ key, label }]. */
-export function downloadCsv({ fileName, columns, rows }) {
+export function downloadCsv({ fileName, columns, rows, prefixRows = [], footerRows = [] }) {
   const cols = Array.isArray(columns) ? columns : [];
   const data = [
+    ...(Array.isArray(prefixRows) ? prefixRows : []),
+    ...(prefixRows?.length ? [[], []] : []),
     cols.map((c) => c.label ?? c.key),
     ...(Array.isArray(rows) ? rows : []).map((r) => cols.map((c) => (typeof c.value === 'function' ? c.value(r) : r?.[c.key]))),
+    ...(Array.isArray(footerRows) ? footerRows.map((r) => cols.map((c) => (typeof c.value === 'function' ? c.value(r) : r?.[c.key]))) : []),
   ];
   const csv = '\ufeff' + data.map((row) => row.map(cell).join(',')).join('\r\n');
   const safe = `${String(fileName || 'export').replace(/[\\/:*?"<>|]+/g, '-')}.csv`;

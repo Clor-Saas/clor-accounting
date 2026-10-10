@@ -1,17 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('@ui/api/masters', async (importOriginal) => ({
   ...(await importOriginal()),
   createCustomer: vi.fn(),
+  updateCustomer: vi.fn(),
   listCustomers: vi.fn(async () => ({ customers: [] })),
   lookupGstin: vi.fn(),
 }));
 const notify = { success: vi.fn(), error: vi.fn() };
-vi.mock('@ui/components/ui/notify', () => ({ notify: { success: (...a) => notify.success(...a), error: (...a) => notify.error(...a) } }));
+vi.mock('../ui/notify', () => ({
+  notify: { success: (...a) => notify.success(...a), error: (...a) => notify.error(...a) },
+  confirmDialog: vi.fn(async () => true),
+}));
 
-import { lookupGstin } from '@ui/api/masters';
+import { lookupGstin, updateCustomer } from '@ui/api/masters';
 import { CustomerForm } from './CustomerPicker';
 
 /**
@@ -32,6 +36,7 @@ beforeEach(() => {
   notify.success.mockReset();
   notify.error.mockReset();
   lookupGstin.mockReset();
+  updateCustomer.mockReset();
 });
 
 /*
@@ -39,20 +44,39 @@ beforeEach(() => {
  * CGST + SGST or leaves as IGST. Set through the picker the form actually uses.
  */
 const setBillingState = async (user, name = 'Karnataka') => {
-  /* The billing card's own picker, by the name it now announces. */
-  await user.click(screen.getByLabelText('State, address 1'));
+  const control = screen.getByLabelText('State, address 1');
+  if (control.tagName === 'SELECT') {
+    await user.selectOptions(control, name);
+    return;
+  }
+  await user.click(control);
   await user.click((await screen.findAllByRole('option')).find((o) => o.textContent.includes(name)));
 };
 
 describe('basic details', () => {
+  it('asks which branch carries a non-zero opening balance when multiple branches exist', async () => {
+    const user = userEvent.setup();
+    render(<CustomerForm
+      db={{ ...db, branches: [{ id: 10, companyId: 1, name: 'Head Office' }, { id: 20, companyId: 1, name: 'South Branch' }] }}
+      setDb={() => {}}
+      currentCompany={company}
+      onClose={() => {}}
+    />);
+    expect(screen.queryByLabelText('Opening Balance Branch')).toBeNull();
+    await user.type(screen.getByLabelText('Opening Balance'), '500');
+    const branch = screen.getByLabelText('Opening Balance Branch');
+    expect(branch).toBeRequired();
+    expect(Array.from(branch.options).map((option) => option.textContent)).toEqual(['Select branch', 'Head Office', 'South Branch']);
+  });
+
   it('asks the six things every customer needs, in order', () => {
     renderForm();
-    for (const label of ['GST Registration Type', 'Customer Name', 'Customer Group', 'Currency', 'Balance Type']) {
+    for (const label of ['GST', 'Customer Name', 'Customer Group', 'Currency']) {
       expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
     }
     expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument();
-    // Dr is the default: a customer normally owes you, not the other way round.
-    expect(screen.getByRole('radio', { name: /Dr \(Default\)/ })).toBeChecked();
+    // Dr stays beside the compact amount and is the default.
+    expect(screen.getByRole('radio', { name: 'Dr' })).toBeChecked();
   });
 
   /* GSTIN is only asked of somebody who says they have one. */
@@ -78,6 +102,23 @@ describe('basic details', () => {
     expect(screen.getByLabelText('PAN')).toHaveValue('AABCU9603R');
   });
 
+  it('keeps the allotted customer code when GSTIN details are fetched', async () => {
+    lookupGstin.mockResolvedValue({
+      code: '29AABCU9603R1ZJ',
+      pan: 'AABCU9603R',
+      state: 'Karnataka',
+      source: 'portal',
+    });
+    const user = userEvent.setup();
+    renderForm();
+
+    expect(screen.getByLabelText('Customer Code')).toHaveValue('200000');
+    await user.type(screen.getByPlaceholderText('Enter 15 digit GSTIN'), '29AABCU9603R1ZJ');
+    await user.click(screen.getByRole('button', { name: /Fetch from GSTIN/i }));
+
+    expect(screen.getByLabelText('Customer Code')).toHaveValue('200000');
+  });
+
   it('refuses to fetch a number that is not 15 characters', async () => {
     const user = userEvent.setup();
     renderForm();
@@ -93,10 +134,8 @@ describe('addresses', () => {
     const user = userEvent.setup();
     renderForm();
 
-    /* A card each, in the shape of an address, rather than two rows of a table
-       eight columns wide. */
-    expect(screen.getByText('Billing Address')).toBeInTheDocument();
-    expect(screen.getByText('Shipping Address')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Billing')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Shipping')).toBeInTheDocument();
     expect(screen.getAllByLabelText('Address Line 1')).toHaveLength(2);
 
     await user.click(screen.getByRole('button', { name: /Add Address/i }));
@@ -113,14 +152,29 @@ describe('addresses', () => {
     const user = userEvent.setup();
     renderForm();
 
-    /* The two built-in cards carry no way to remove themselves, and their
-       names are headings rather than fields. */
-    expect(screen.queryByRole('button', { name: /Remove Billing/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Remove Shipping Address/i })).toBeNull();
-    expect(screen.queryByDisplayValue('Billing')).toBeNull();
+    /* The two built-in rows keep their delete controls disabled and their
+       location names cannot be edited. */
+    expect(screen.getByRole('button', { name: /Delete Billing/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Delete Shipping$/i })).toBeDisabled();
+    expect(screen.getByDisplayValue('Billing')).toHaveAttribute('readonly');
 
     await user.click(screen.getByRole('button', { name: /Add Address/i }));
-    expect(screen.getByRole('button', { name: /Remove Shipping 2/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Delete Shipping 2/i })).toBeEnabled();
+  });
+
+  it('enables city selection only after country and state are selected', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    const city = screen.getByLabelText('City, address 1');
+    expect(city).toBeDisabled();
+
+    await waitFor(() => expect(screen.getByLabelText('Country, address 1').options.length).toBeGreaterThan(1));
+    const state = screen.getByLabelText('State, address 1');
+    expect(state).toBeEnabled();
+    await user.selectOptions(state, 'Karnataka');
+    await waitFor(() => expect(screen.getByLabelText('City, address 1')).toBeEnabled());
+    expect(screen.getByLabelText('City, address 1').options.length).toBeGreaterThan(1);
   });
 
   it('asks only for what an Indian address prints — district is not one of them', () => {
@@ -156,9 +210,11 @@ describe('contacts', () => {
 });
 
 describe('the remaining tabs', () => {
-  it('puts credit, statutory and code where the master asks for them', async () => {
+  it('puts the customer code in Basic Details and keeps credit and statutory fields in their tabs', async () => {
     const user = userEvent.setup();
     renderForm();
+
+    expect(screen.getByLabelText('Customer Code')).toHaveValue('200000');
 
     await user.click(screen.getByRole('tab', { name: 'Credit Details' }));
     expect(screen.getByLabelText(/Credit Period/)).toBeInTheDocument();
@@ -168,8 +224,6 @@ describe('the remaining tabs', () => {
     await user.click(screen.getByRole('tab', { name: 'Statutory Details' }));
     expect(screen.getByLabelText('MSME / Udyam')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: 'Others' }));
-    expect(screen.getByLabelText('Customer Code')).toBeInTheDocument();
   });
 
   /*
@@ -213,7 +267,7 @@ describe('the record reaches the server', () => {
    */
   it('sends the whole master, and keeps the code the server allotted', async () => {
     const { createCustomer } = await import('@ui/api/masters');
-    createCustomer.mockResolvedValue({ party: { id: 'srv_1', code: 'CUS-0007' } });
+    createCustomer.mockResolvedValue({ party: { id: 'srv_1', code: '200000' } });
 
     const rows = [];
     const user = userEvent.setup();
@@ -243,13 +297,14 @@ describe('the record reaches the server', () => {
     expect(createCustomer).toHaveBeenCalledTimes(1);
     const sent = createCustomer.mock.calls[0][0];
     expect(sent.name).toBe('Acme Traders');
+    expect(sent.code).toBe('200000');
     expect(sent.msmeNumber).toBe('UDYAM-KR-03-0001234');
-    expect(sent.contacts).toEqual([{ name: 'Priya Nair', position: 'Accounts', email: undefined, mobile: undefined }]);
+    expect(sent.contacts).toEqual([{ name: 'Priya Nair', position: 'Accounts', email: undefined, mobile: undefined, isPrimary: false }]);
 
     // The allotted code comes back onto the local row — this is the master's
     // "auto generated", which previously stayed blank.
     const written = rows.at(-1);
-    expect(written.customers.at(-1).code).toBe('CUS-0007');
+    expect(written.customers.at(-1).code).toBe('200000');
     expect(written.customers.at(-1).backendPartyId).toBe('srv_1');
   });
 
@@ -268,6 +323,7 @@ describe('the record reaches the server', () => {
     await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
     expect(rows.at(-1).customers.at(-1).name).toBe('Offline Co');
+    expect(rows.at(-1).customers.at(-1).code).toBe('200000');
     expect(notify.error).toHaveBeenCalled();
   });
 });
@@ -312,20 +368,52 @@ describe('header actions', () => {
 
     await user.click(screen.getByRole('button', { name: /More options/i }));
     expect(screen.getByText(/Save and add another/i)).toBeInTheDocument();
-    expect(screen.getByText(/Mark inactive/i)).toBeInTheDocument();
     expect(screen.getByText(/Clear the form/i)).toBeInTheDocument();
   });
 });
 
 describe('Others tab', () => {
-  it('offers Active rather than a delete, and carries no remarks field', async () => {
+  it('does not duplicate customer status in the Others tab', async () => {
     const user = userEvent.setup();
     renderForm();
     await user.click(screen.getByRole('tab', { name: 'Others' }));
 
-    expect(screen.getByRole('checkbox', { name: 'Active' })).toBeChecked();
-    // The spec excludes remarks; a Notes box was there before.
-    expect(screen.queryByLabelText(/Notes/i)).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Customer Status' })).toBeNull();
+  });
+});
+
+describe('customer status', () => {
+  it('is hidden while creating and available above GST details while editing', async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderForm();
+    expect(screen.queryByRole('combobox', { name: 'Customer Status' })).toBeNull();
+    unmount();
+
+    const existing = {
+      id: 8,
+      companyId: 1,
+      displayName: 'Acme Traders',
+      name: 'Acme Traders',
+      code: '200008',
+      backendPartyId: 'party-8',
+      gstRegistration: 'Unregistered',
+      isActive: true,
+      billingAddress: { state: 'Karnataka', country: 'India' },
+      shippingAddress: { state: 'Karnataka', country: 'India' },
+    };
+    updateCustomer.mockResolvedValue({ party: { ...existing, isActive: false } });
+    renderForm({ db: { ...db, customers: [existing] }, initialData: existing });
+
+    const status = screen.getByRole('combobox', { name: 'Customer Status' });
+    expect(status).toBeInTheDocument();
+    expect(status).toHaveTextContent('Active');
+
+    await user.click(status);
+    await user.click(screen.getByRole('option', { name: /Inactive/ }));
+    expect(status).toHaveTextContent('Inactive');
+
+    await user.click(screen.getByRole('button', { name: /^Save changes$/ }));
+    expect(updateCustomer).toHaveBeenCalledWith('party-8', expect.objectContaining({ isActive: false }));
   });
 });
 

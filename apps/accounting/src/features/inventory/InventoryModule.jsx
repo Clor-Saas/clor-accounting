@@ -480,6 +480,9 @@ const InventoryModule = ({ db, openModal, currentCompany, warehouses = [], onOpe
     <DocumentListShell
       entity="inventory"
       title="Inventory"
+      compact
+      tight
+      denseCards
       company={currentCompany}
       search={{
         value: itemSearch.query,
@@ -511,26 +514,26 @@ const InventoryModule = ({ db, openModal, currentCompany, warehouses = [], onOpe
          beside them stood two thirds empty. */
       tabsExtras={
         <>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium whitespace-nowrap" htmlFor="inv-view">View</label>
+          <div className="flex items-center gap-1.5">
+            <label className="ui-label !mb-0 whitespace-nowrap" htmlFor="inv-view">View</label>
             <select
               id="inv-view"
               value={viewMode}
               onChange={(e) => setViewMode(e.target.value)}
-              className="ui-select px-2 text-sm"
+              className="ui-select ui-ctl-compact px-2 text-xs"
             >
               <option value="qty">Qty</option>
               <option value="value">Value</option>
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium whitespace-nowrap" htmlFor="inv-warehouse">Warehouse</label>
+          <div className="flex items-center gap-1.5">
+            <label className="ui-label !mb-0 whitespace-nowrap" htmlFor="inv-warehouse">Warehouse</label>
             <select
               id="inv-warehouse"
               value={warehouseId}
               onChange={(e) => setWarehouseId(e.target.value)}
-              className="ui-select px-2 text-sm"
+              className="ui-select ui-ctl-compact px-2 text-xs"
             >
               <option value="">All Warehouses</option>
               {warehouseOptions.map((w) => (
@@ -549,13 +552,13 @@ const InventoryModule = ({ db, openModal, currentCompany, warehouses = [], onOpe
             different heights. The custom dates are their own group now, free to
             wrap onto the next line without taking the label with them.
           */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium whitespace-nowrap" htmlFor="inv-period">Period</label>
+          <div className="flex items-center gap-1.5">
+            <label className="ui-label !mb-0 whitespace-nowrap" htmlFor="inv-period">Period</label>
             <select
               id="inv-period"
               value={period}
               onChange={(e) => setPeriod(e.target.value)}
-              className="ui-select px-2 text-sm"
+              className="ui-select ui-ctl-compact px-2 text-xs"
             >
               {PERIOD_OPTIONS.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -611,7 +614,7 @@ const InventoryModule = ({ db, openModal, currentCompany, warehouses = [], onOpe
       }}
     >
 
-      <div className="ui-table-scroll">
+      <div className="overflow-x-auto ui-table-scroll inventory-table-scroll" data-fill-viewport>
         <table className="ui-table ui-table-wide ui-table-sticky">
           {/*
             Plain headings with the same filter control the invoice list uses.

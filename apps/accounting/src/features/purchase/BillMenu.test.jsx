@@ -17,6 +17,7 @@ vi.mock('@ui/permissions/useFeatures', () => ({
 }));
 vi.mock('@ui/api/purchaseDocs', () => ({
   createDocApi: vi.fn(async () => ({})),
+  updateDocApi: vi.fn(async () => ({})),
   hasApiSession: () => false,
 }));
 
