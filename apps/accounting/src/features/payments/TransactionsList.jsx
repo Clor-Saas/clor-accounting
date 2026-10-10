@@ -300,6 +300,8 @@ const TransactionsTable = ({ title, rows, currentCompany, rightActions, onView, 
     <DocumentListShell
       entity="transfer"
       title={title}
+      tight
+      denseCards
       company={currentCompany}
       search={{
         value: search.query,
@@ -320,10 +322,10 @@ const TransactionsTable = ({ title, rows, currentCompany, rightActions, onView, 
         { label: `Total ${title.toLowerCase()}`, value: headline.count, count: true, tone: 'draft', Icon: FileText },
         { label: 'Value', value: headline.total, tone: 'sent', Icon: Receipt },
         { label: 'This month', value: headline.thisMonth, tone: 'paid', Icon: CreditCard },
-        { label: 'Against documents', value: headline.allocated, tone: 'partial', Icon: Landmark, hint: 'Allocated to invoices or bills' },
+        { label: 'Against documents', value: headline.allocated, tone: 'partial', Icon: Landmark },
         headline.topMode
-          ? { label: `Most used — ${headline.topMode.name}`, value: headline.topMode.value, tone: 'outstanding', Icon: Undo2, hint: 'By value' }
-          : { label: 'On account', value: headline.unallocated, tone: 'outstanding', Icon: Undo2, hint: 'Not settled against anything' },
+          ? { label: `Most used — ${headline.topMode.name}`, value: headline.topMode.value, tone: 'outstanding', Icon: Undo2 }
+          : { label: 'On account', value: headline.unallocated, tone: 'outstanding', Icon: Undo2 },
       ]}
       tabs={TX_STATUS_TABS}
       tabsLabel={`${title} filter`}
@@ -341,7 +343,7 @@ const TransactionsTable = ({ title, rows, currentCompany, rightActions, onView, 
             157px, which is the Amount column, was not merely off-screen but
             unreachable, with no scrollbar to say it existed. Every other wide
             list in the product is wrapped this way; this one was missed. */}
-        <div className="overflow-x-auto ui-table-scroll">
+        <div className="overflow-x-auto ui-table-scroll transactions-table-scroll">
         <table className="ui-table ui-table-wide ui-table-sticky">
           <thead>
             <tr>

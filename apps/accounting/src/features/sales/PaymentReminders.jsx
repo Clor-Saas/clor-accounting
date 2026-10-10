@@ -40,13 +40,6 @@ export default function PaymentReminders({ db, setDb, currentCompany }) {
 
   const stageLabel = (s) => (s === 3 ? '15+ days' : s === 2 ? '7+ days' : s === 1 ? 'Due' : 'Not due');
 
-  const counts = {
-    due: rows.filter((r) => r.stage === 1).length,
-    s2: rows.filter((r) => r.stage === 2).length,
-    s3: rows.filter((r) => r.stage === 3).length,
-    sendNow: rows.filter((r) => needsReminder(r.invoice, today)).length,
-  };
-
   const prSearch = useListSearch(
     rows.filter((r) => {
       if (filter === 'DUE') return r.stage === 1;
@@ -143,14 +136,6 @@ export default function PaymentReminders({ db, setDb, currentCompany }) {
     { value: 'S2', label: '7+ days', tone: 'partial' },
     { value: 'S3', label: '15+ days', tone: 'outstanding' },
   ];
-  const prStatusCounts = {
-    ALL: rows.length,
-    SENDNOW: counts.sendNow,
-    DUE: counts.due,
-    S2: counts.s2,
-    S3: counts.s3,
-  };
-
   /*
    * What is owed and how old it is. The oldest bucket is the one that decides
    * whether this is a collections problem or a timing one, so it gets a figure
@@ -183,9 +168,11 @@ export default function PaymentReminders({ db, setDb, currentCompany }) {
   return (
     <DocumentListShell
       entity="customer"
+      className="sales-list-page"
       title="Payment Reminders"
       company={currentCompany}
       search={{
+        before: <select value={filter} onChange={(event) => setFilter(event.target.value)} className="ui-select ui-ctl-compact w-40" aria-label="Reminder stage">{PR_STATUS_TABS.map((item) => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select>,
         value: prSearch.query,
         onChange: prSearch.setQuery,
         placeholder: 'Search collectibles…',
@@ -211,18 +198,9 @@ export default function PaymentReminders({ db, setDb, currentCompany }) {
         { label: '15+ days old', value: prHeadline.old, tone: 'overdue', Icon: Ban },
         { label: 'To chase today', value: prHeadline.sendNow, tone: 'partial', Icon: MessageCircle },
       ]}
-      tabs={PR_STATUS_TABS}
-      tabsLabel="Reminder stage"
-      statusValue={filter}
-      statusCounts={prStatusCounts}
-      onStatusChange={setFilter}
-      tip={{
-        storageKey: 'neev.tip.paymentReminders',
-        text: 'Send now is not a stage — it is every invoice the schedule says is owed a message today.',
-        Icon: Bell,
-      }}
+      denseCards
     >
-      <div className="overflow-x-auto ui-table-scroll">
+      <div className="overflow-x-auto ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}>
           <table className="ui-table ui-table-wide ui-table-sticky">
             <thead>
               <tr>
@@ -255,7 +233,6 @@ export default function PaymentReminders({ db, setDb, currentCompany }) {
               ) : (
               shown.map(({ invoice: inv, overdue, stage, balance }) => {
                 const last = lastReminder(inv);
-                const urgent = needsReminder(inv, today);
                 return (
                   <tr key={inv.id}>
                     <td className="ui-col-id"><DocumentNumber value={inv.number} label="invoice" /></td>
@@ -263,10 +240,7 @@ export default function PaymentReminders({ db, setDb, currentCompany }) {
                     <td className="ui-col-date"><DueDate value={inv.dueDate} balance={balance} /></td>
                     <td className="ui-col-amount ui-mono">{overdue > 0 ? `${overdue}d` : '—'}</td>
                     <td className="ui-col-amount"><SalesBalance value={balance} company={currentCompany} dueIso={inv.dueDate} /></td>
-                    <td>
-                      <StatusPill status={stageLabel(stage)} />
-                      {urgent ? <span className="ui-caption ml-1 text-[rgb(var(--warn-ink))]">Send now</span> : null}
-                    </td>
+                    <td className="whitespace-nowrap"><StatusPill status={stageLabel(stage)} /></td>
                     <td className="ui-col-meta text-xs">{last ? `${last.date} · ${last.channel}` : 'Never'}</td>
                     <td className="text-right">
                       <div className="flex items-center justify-end gap-1.5">

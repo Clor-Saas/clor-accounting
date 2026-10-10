@@ -50,7 +50,7 @@ const toneVars = (tone) =>
         figure: tone === 'neg' || tone === 'warn' ? `rgb(var(--${tone}))` : undefined,
       };
 
-export function StatCards({ cards, company }) {
+export function StatCards({ cards, company, dense = false }) {
   const shown = cards.filter(Boolean);
   /*
    * The hint line was a default reading "This financial year" on every card of
@@ -70,28 +70,28 @@ export function StatCards({ cards, company }) {
       <button
         type="button"
         onClick={card.onSelect}
-        className="ui-card px-3 py-2.5 flex items-center gap-2.5 text-left w-full cursor-pointer"
+        className={`ui-card px-3 flex items-center text-left w-full cursor-pointer ${dense ? 'py-1.5 gap-1.5' : 'py-2 gap-2'}`}
         aria-label={`${card.label} — open`}
       >
         {children}
       </button>
     ) : (
-      <div className="ui-card px-3 py-2.5 flex items-center gap-2.5">{children}</div>
+      <div className={`ui-card px-3 flex items-center ${dense ? 'py-1.5 gap-1.5' : 'py-2 gap-2'}`}>{children}</div>
     );
 
   return (
-    <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" aria-label="Summary">
+    <section className={`grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 ${dense ? 'gap-1.5' : 'gap-2'}`} aria-label="Summary">
       {shown.map((c) => (
         <Tile key={c.label} card={c}>
           {/* Beside the figure rather than floating in the corner. Absolute
               positioning was what forced the tile to be tall enough to have a
               corner to float in. */}
           <span
-            className="h-8 w-8 rounded-lg grid place-items-center flex-shrink-0"
+            className={`${dense ? 'h-6 w-6' : 'h-7 w-7'} rounded-lg grid place-items-center flex-shrink-0`}
             style={{ backgroundColor: toneVars(c.tone).wash, color: toneVars(c.tone).ink }}
             aria-hidden="true"
           >
-            <c.Icon size={16} />
+            <c.Icon size={dense ? 14 : 15} />
           </span>
 
           <span className="block min-w-0">
@@ -103,7 +103,7 @@ export function StatCards({ cards, company }) {
               {c.label}
             </span>
             <span
-              className={`block leading-6 truncate tabular-nums ${c.count ? 'text-base' : 'ui-mono text-base'}`}
+              className={`block truncate tabular-nums ${dense ? 'leading-5 text-sm' : 'leading-6 text-base'} ${c.count ? '' : 'ui-mono'}`}
       title={c.count ? String(c.value) : formatMoney(c.value, company)}
               style={toneVars(c.tone).figure ? { color: toneVars(c.tone).figure } : undefined}
             >
@@ -393,11 +393,11 @@ export function SplitPrimary({ label, options = [], onSelect, children }) {
 }
 
 /** PDF, Excel or CSV, over exactly the rows and columns on screen. */
-export function ExportButton({ title, fileName, sheetName, columns, rows, subtitleParts = {} }) {
+export function ExportButton({ title, fileName, sheetName, columns, rows, subtitleParts = {}, label = '', metaLines = [], footerRows = [], reportStyle = 'default' }) {
   const ref = useRef(null);
   const [open, setOpen] = useState(false);
   const subtitle = describeView(subtitleParts);
-  const common = { fileName, columns, rows };
+  const common = { fileName, columns, rows, metaLines, footerRows, reportStyle };
   return (
     <div className="relative">
       <button
@@ -410,7 +410,7 @@ export function ExportButton({ title, fileName, sheetName, columns, rows, subtit
         aria-label="Export"
         title="Export"
       >
-        <Download size={16} aria-hidden="true" />
+        <Download size={16} aria-hidden="true" /> {label}
       </button>
       {open ? (
         <Popover anchorRef={ref} onClose={() => setOpen(false)} minWidth={216}>
@@ -427,11 +427,11 @@ export function ExportButton({ title, fileName, sheetName, columns, rows, subtit
                 onClick={() => {
                   setOpen(false);
                   if (o.k === 'pdf') {
-                    exportListPdf({ ...common, title, subtitle, footNote: `${rows.length} row(s) · exported from Clor` });
+                    exportListPdf({ ...common, title, subtitle, footNote: `${rows.length} row(s) · exported from CLOR` });
                   } else if (o.k === 'xlsx') {
                     exportListXlsx({ ...common, subtitle, sheetName: sheetName || title });
                   } else {
-                    exportRows({ ...common, label: 'row(s)' });
+                    exportRows({ ...common, prefixRows: metaLines.map((line) => [line]), label: 'row(s)' });
                   }
                 }}
                 className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm hover:bg-[rgb(var(--surface-sunken))]"
@@ -500,14 +500,14 @@ export function ListTip({ storageKey, text, actionLabel, onAction, Icon }) {
   if (dismissed) return null;
   return (
     <div
-      className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm"
+      className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
       style={{ backgroundColor: 'rgb(var(--info-soft))', color: 'rgb(var(--fg))' }}
       role="note"
     >
       {Icon ? (
-        <Icon size={16} aria-hidden="true" className="shrink-0" style={{ color: 'rgb(var(--info))' }} />
+        <Icon size={14} aria-hidden="true" className="shrink-0" style={{ color: 'rgb(var(--info))' }} />
       ) : null}
-      <span className="min-w-0">{text}</span>
+      <span className="min-w-0 truncate" title={text}>{text}</span>
       {actionLabel && onAction ? (
         <button
           type="button"

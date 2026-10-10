@@ -54,7 +54,7 @@ CASES = [
      "Confirmed on /assets/index-BbslsMIS.js (1.6 MB). Bundle size is worth splitting later."),
     ("Public site", "Landing page renders with no console errors",
      "Open the site, read the console", "No errors", "Pass",
-     "Console clean. Title 'Neev One — GST accounting'; hero, trial-balance sample and both calls to action present."),
+     "Console clean. Title 'CLOR — GST accounting'; hero, trial-balance sample and both calls to action present."),
     ("Public site", "Theme toggle works and is remembered",
      "Press the theme button, reload", "Light/dark switches and persists", "Pass",
      "data-theme flips dark→light, body ground becomes rgb(250,250,249), uiTheme stored in localStorage."),
@@ -283,7 +283,7 @@ def build():
     ws = wb.active
     ws.title = "Run 10 Sep 2026"
 
-    ws["A1"] = "Neev One — end-to-end test run"
+    ws["A1"] = "CLOR — end-to-end test run"
     ws["A1"].font = Font(bold=True, size=15)
     ws["A2"] = f"Target: {SITE}   ·   Run: 10 Sep 2026   ·   Environment: production"
     ws["A2"].font = Font(size=10, color="6B7280")

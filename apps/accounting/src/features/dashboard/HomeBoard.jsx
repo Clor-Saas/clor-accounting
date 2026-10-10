@@ -45,20 +45,22 @@ function StatCard({ tone = 'blue', Icon, label, value, company, count = false, f
   const t = TONES[tone] || TONES.blue;
   return (
     <div className="ui-card p-4" style={{ backgroundColor: t.wash, borderColor: t.soft }}>
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-2.5">
         <span
-          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
           style={{ backgroundColor: t.soft, color: t.solid }}
           aria-hidden="true"
         >
-          <Icon size={18} />
+          <Icon size={16} />
         </span>
-        <div className="min-w-0">
-          <div className="ui-caption">{label}</div>
-          <div className="ui-money-lg mt-0.5 truncate">
-            {count ? value : formatMoney(value, company)}
-          </div>
-        </div>
+        <div className="ui-caption min-w-0 truncate">{label}</div>
+      </div>
+      <div
+        className="mt-1.5 whitespace-nowrap tabular-nums"
+        style={{ fontSize: 'clamp(0.875rem, 1.35vw, 1rem)', lineHeight: '1.5rem', letterSpacing: '-0.025em' }}
+        title={String(count ? value : formatMoney(value, company))}
+      >
+        {count ? value : formatMoney(value, company)}
       </div>
 
       {foot ? (

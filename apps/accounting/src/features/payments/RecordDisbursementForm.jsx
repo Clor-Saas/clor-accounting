@@ -849,7 +849,7 @@ const RecordDisbursementForm = ({ db, setDb, currentCompany, onClose, screenTitl
   const onFormKeyDown = useDocumentFormKeys({ formRef });
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} noValidate className="space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} noValidate className="ui-creation-form space-y-3">
       {/* The bar every document form carries: the name on the left, every way
           out of it on the right, pinned so Record stays reachable from the
           bottom of a long list of open bills. */}

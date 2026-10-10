@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Start Neev One and print the address it is reachable on.
+# Start CLOR and print the address it is reachable on.
 #
 # The shared link kept breaking because it was a trycloudflare quick tunnel:
 # those get a new random hostname every time they start and drop on their own,
@@ -63,7 +63,7 @@ fi
 IP="$(lan_ip || true)"
 
 echo
-echo "Neev One is running."
+echo "CLOR is running."
 echo "  On this Mac:        http://localhost:$APP_PORT"
 if [ -n "$IP" ]; then
   echo "  On this network:    http://$IP:$APP_PORT"

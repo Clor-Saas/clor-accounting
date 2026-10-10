@@ -102,7 +102,7 @@ function DiffChip({ value, company, invert = false }) {
   const v = Math.round(value);
   if (v === 0) {
     return (
-      <span className="inline-flex items-center gap-1 text-[0.8125rem] font-medium" style={{ color: 'rgb(var(--fg-muted))' }}>
+      <span className="inline-flex items-center gap-1 text-sm font-medium" style={{ color: 'rgb(var(--fg-muted))' }}>
         <Minus size={14} aria-hidden="true" />
         Flat
       </span>
@@ -113,7 +113,7 @@ function DiffChip({ value, company, invert = false }) {
   const Icon = rose ? ArrowUpRight : ArrowDownRight;
   return (
     <span
-      className="inline-flex items-center gap-1 text-[0.8125rem] font-medium"
+      className="inline-flex items-center gap-1 text-sm font-medium"
       style={{ color: good ? 'rgb(var(--pos))' : 'rgb(var(--neg))' }}
     >
       <Icon size={14} aria-hidden="true" />
@@ -127,7 +127,7 @@ function PointsChip({ value, invert = false }) {
   const v = Math.round(value);
   if (v === 0) {
     return (
-      <span className="inline-flex items-center gap-1 text-[0.8125rem] font-medium" style={{ color: 'rgb(var(--fg-muted))' }}>
+      <span className="inline-flex items-center gap-1 text-sm font-medium" style={{ color: 'rgb(var(--fg-muted))' }}>
         <Minus size={14} aria-hidden="true" />
         Flat
       </span>
@@ -138,7 +138,7 @@ function PointsChip({ value, invert = false }) {
   const Icon = rose ? ArrowUpRight : ArrowDownRight;
   return (
     <span
-      className="inline-flex items-center gap-1 text-[0.8125rem] font-medium"
+      className="inline-flex items-center gap-1 text-sm font-medium"
       style={{ color: good ? 'rgb(var(--pos))' : 'rgb(var(--neg))' }}
     >
       <Icon size={14} aria-hidden="true" />
@@ -182,7 +182,7 @@ function DeltaChip({ value, invert = false }) {
 
   return (
     <span
-      className="inline-flex items-center gap-1 text-[0.8125rem] font-medium"
+      className="inline-flex items-center gap-1 text-sm font-medium"
       style={{ color: flat ? 'rgb(var(--fg-muted))' : good ? 'rgb(var(--pos))' : 'rgb(var(--neg))' }}
     >
       <Icon size={14} aria-hidden="true" />
@@ -312,7 +312,7 @@ function AgeingBar({ buckets, total, company, onPick }) {
                 {b.label}
               </span>
               <span
-                className="ms-auto ui-mono text-[0.8125rem]"
+                className="ms-auto ui-mono text-sm"
                 style={{ color: amt > 0 ? 'rgb(var(--fg))' : 'rgb(var(--fg-subtle))', fontWeight: amt > 0 ? 500 : 400 }}
               >
                 {amt > 0 ? formatMoney(amt, company) : '—'}

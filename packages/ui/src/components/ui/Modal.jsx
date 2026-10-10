@@ -16,7 +16,7 @@ import { X } from 'lucide-react';
    a CSS variable, and drifting apart would show the dialog closing twice. */
 const EXIT_MS = 140;
 
-const Modal = ({ children, onClose, title = 'Form', maxWidthClass = 'max-w-4xl' }) => {
+const Modal = ({ children, onClose, title = 'Form', maxWidthClass = 'max-w-4xl', headerActions = null, showCloseIcon = true }) => {
   /*
    * Closing is a state, not an event.
    *
@@ -47,9 +47,9 @@ const Modal = ({ children, onClose, title = 'Form', maxWidthClass = 'max-w-4xl' 
    */
   useEffect(() => {
     if (!closing) return undefined;
-    const t = setTimeout(() => onClose?.(), EXIT_MS);
+    const t = setTimeout(() => onCloseRef.current?.(), EXIT_MS);
     return () => clearTimeout(t);
-  }, [closing, onClose]);
+  }, [closing]);
   const panelRef = useRef(null);
   const returnFocusRef = useRef(null);
   const titleId = useId();
@@ -59,6 +59,7 @@ const Modal = ({ children, onClose, title = 'Form', maxWidthClass = 'max-w-4xl' 
    */
   const onCloseRef = useRef(onClose);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     onCloseRef.current = onClose;
   }, [onClose]);
 
@@ -158,9 +159,14 @@ const Modal = ({ children, onClose, title = 'Form', maxWidthClass = 'max-w-4xl' 
           <h2 id={titleId} className="ui-t-sec">
             {title}
           </h2>
-          <button type="button" onClick={beginClose} className="ui-icon-btn" aria-label="Close">
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            {headerActions}
+            {showCloseIcon ? (
+              <button type="button" onClick={beginClose} className="ui-icon-btn" aria-label="Close">
+                <X size={18} />
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-6">{children}</div>
       </div>

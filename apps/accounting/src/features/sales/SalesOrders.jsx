@@ -272,6 +272,10 @@ export default function SalesOrders({ db, setDb, currentCompany, onConvertToInvo
       return;
     }
     const customer = customers.find((c) => c.id === parseInt(form.customerId));
+    if (customer?.isActive === false) {
+      notify.error('This customer is inactive. Activate the customer before creating a sales order.');
+      return;
+    }
     const orderNumber = String(editingOrder?.number || nextOrderNumber || '').trim();
     if (!orderNumber) {
       notify.error('Sales order number is required');
@@ -416,16 +420,6 @@ export default function SalesOrders({ db, setDb, currentCompany, onConvertToInvo
   ];
   const shown = soStatus ? shownAll.filter((o) => progressOf(o).status === soStatus) : shownAll;
 
-  const soStatusCounts = useMemo(() => {
-    const counts = { '': shownAll.length };
-    for (const o of shownAll) {
-      const st = progressOf(o).status;
-      counts[st] = (counts[st] || 0) + 1;
-    }
-    return counts;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shownAll]);
-
   /*
    * Five figures about the same book: how many orders, what they are worth,
    * what is still to go out of the door, what has been billed, and what is
@@ -470,7 +464,7 @@ export default function SalesOrders({ db, setDb, currentCompany, onConvertToInvo
    */
   if (open) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-3">
       {open ? (
         <form
           ref={formRef}
@@ -479,7 +473,7 @@ export default function SalesOrders({ db, setDb, currentCompany, onConvertToInvo
             e.preventDefault();
             save();
           }}
-          className="ui-card space-y-4 p-5"
+          className="ui-creation-form ui-card space-y-3 p-3"
         >
           {/* The same bar an invoice carries: the document's name on the left,
               every way out of it on the right, pinned so Create stays reachable
@@ -730,9 +724,11 @@ export default function SalesOrders({ db, setDb, currentCompany, onConvertToInvo
   return (
     <DocumentListShell
       entity="salesOrder"
+      className="sales-list-page"
       title="Sales Orders"
       company={currentCompany}
       search={{
+        before: <select value={soStatus} onChange={(event) => setSoStatus(event.target.value)} className="ui-select ui-ctl-compact w-40" aria-label="Sales order status">{SO_STATUS_TABS.map((item) => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select>,
         value: soSearch.query,
         onChange: soSearch.setQuery,
         placeholder: 'Search sales orders…',
@@ -775,20 +771,11 @@ export default function SalesOrders({ db, setDb, currentCompany, onConvertToInvo
         { label: 'Delivered, to bill', value: soHeadline.toBill, tone: 'partial', Icon: Truck },
         { label: 'Billed', value: soHeadline.billed, tone: 'paid', Icon: Receipt },
       ]}
-      tabs={SO_STATUS_TABS}
-      tabsLabel="Sales order status"
-      statusValue={soStatus}
-      statusCounts={soStatusCounts}
-      onStatusChange={setSoStatus}
-      tip={{
-        storageKey: 'neev.tip.salesOrders',
-        text: 'Delivered and billed are counted from the challans and invoices raised against each order — never typed.',
-        Icon: Truck,
-      }}
+      denseCards
     >
 
 
-      <div className="overflow-x-auto ui-table-scroll">
+      <div className="overflow-x-auto ui-table-scroll" style={{ '--table-scroll-h': 'calc(100dvh - 12rem)' }}>
         <table className="ui-table ui-table-wide ui-table-sticky">
             <thead>
               <tr>
@@ -802,8 +789,8 @@ export default function SalesOrders({ db, setDb, currentCompany, onConvertToInvo
                 <ColumnHeader label="Customer Name" col="customer" state={soFilters} />
                 <th scope="col" className="ui-num">Taxable Amount (₹)</th>
                 <ColumnHeader label="Total Amount (₹)" col="total" state={soFilters} className="ui-num" align="right" />
-                <ColumnHeader label="Status" col="status" state={soFilters} align="center" />
-                <th scope="col" className="text-center">Action</th>
+                <ColumnHeader label="Status" col="status" state={soFilters} />
+                <th scope="col" className="ui-action-col"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody className="ui-rows">
@@ -849,8 +836,8 @@ export default function SalesOrders({ db, setDb, currentCompany, onConvertToInvo
                     <td className="ui-col-entity">{o.customerName}</td>
                     <td className="ui-col-amount"><MoneyValue value={o.subtotal} company={currentCompany} /></td>
                     <td className="ui-col-amount"><MoneyValue value={o.total} company={currentCompany} /></td>
-                    <td><StatusPill status={prog.status} /></td>
-                    <td className="text-center">
+                    <td className="whitespace-nowrap"><StatusPill status={prog.status} /></td>
+                    <td className="ui-action-col">
                       <div className="inline-flex">
                         <SalesOrderRowActions
                           order={o}

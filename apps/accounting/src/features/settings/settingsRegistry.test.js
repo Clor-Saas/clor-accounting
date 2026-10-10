@@ -9,6 +9,7 @@ import {
   SETTINGS_ITEMS,
   breadcrumbFor,
   isSettingsKey,
+  settingsBackTarget,
   groupedForCategory,
   searchSettings,
   visibleCategories,
@@ -111,10 +112,11 @@ describe('what a person may open', () => {
     expect(keys).toContain('settingsCompany');
   });
 
-  it('hides a setting whose feature is switched off', () => {
+  it('keeps branch and warehouse administration under Organisation', () => {
     const isEnabled = (f) => f !== 'branches';
     const keys = visibleSettings({ can: () => true, isEnabled }).map((i) => i.key);
-    expect(keys).not.toContain('settingsBranches');
+    expect(keys).toContain('settingsBranches');
+    expect(keys).toContain('settingsWarehouses');
   });
 
   it('drops a category once nothing in it is left', () => {
@@ -133,6 +135,17 @@ describe('what a person may open', () => {
 });
 
 describe('local navigation', () => {
+  it('keeps Settings Back inside settings instead of jumping to reports', () => {
+    expect(settingsBackTarget('reports')).toBe('settings');
+    expect(settingsBackTarget('settingsCompany')).toBe('settings');
+    expect(settingsBackTarget('settings')).toBe('settings');
+  });
+
+  it('returns to a document screen when settings was opened as an errand', () => {
+    expect(settingsBackTarget('invoices')).toBe('invoices');
+    expect(settingsBackTarget('bills')).toBe('bills');
+  });
+
   it('groups a long category under its own headings', () => {
     const groups = groupedForCategory('security', all);
     expect(groups.map((g) => g.name)).toEqual(['Access', 'Security']);
@@ -242,12 +255,16 @@ describe('a whole screen is not framed as a settings panel', () => {
    */
   const isDocumentList = (name) => {
     if (!name) return false;
-    const files = execSync(
-      `grep -rl "const ${name} = \\|function ${name}(" ${JSON.stringify(SRC_DIR)} --include=*.jsx || true`,
-      { encoding: 'utf8' }
-    )
-      .split('\n')
-      .filter(Boolean);
+    let output = '';
+    try {
+      output = execSync(
+        `rg -l --glob "*.jsx" "const ${name} =|function ${name}\\(" ${JSON.stringify(SRC_DIR)}`,
+        { encoding: 'utf8' }
+      );
+    } catch (error) {
+      if (error?.status !== 1) throw error;
+    }
+    const files = output.split(/\r?\n/).filter(Boolean);
 
     return files.some((f) => {
       const src = readFileSync(f, 'utf8');
@@ -277,7 +294,8 @@ describe('a whole screen is not framed as a settings panel', () => {
     /* Leaving the frame must not mean leaving Settings — this is where people
        look for them. */
     expect(searchSettings('recurring', all).map((i) => i.key)).toContain('recurringInvoices');
-    const business = visibleCategories(all).find((c) => c.id === 'business');
-    expect(business.items.map((i) => i.key)).toContain('recurringInvoices');
+    expect(visibleCategories(all).some((c) => c.id === 'business')).toBe(false);
+    const platform = visibleCategories(all).find((c) => c.id === 'platform');
+    expect(platform.items.map((i) => i.key)).toContain('recurringInvoices');
   });
 });

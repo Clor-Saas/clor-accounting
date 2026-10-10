@@ -1,13 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createPortal } from 'react-dom';
 
 vi.mock('@ui/api/masters', async (importOriginal) => ({
   ...(await importOriginal()),
   lookupGstin: vi.fn(async () => ({ pan: 'AABCU9603R', source: 'derived' })),
 }));
 
-import { ChartAccountForm } from '../../App';
+import { ChartAccountForm, expenseTdsBase } from '../../App';
 
 /**
  * The ledger master: one form whose shape follows the group.
@@ -443,5 +444,74 @@ describe('as a screen rather than a dialog', () => {
     renderForm();
     expect(screen.queryByRole('heading', { name: 'New Ledger' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Save and New' })).toBeInTheDocument();
+  });
+});
+
+describe('quick create inside a document', () => {
+  it('saves the ledger without submitting the document underneath', async () => {
+    const user = userEvent.setup();
+    const parentSubmit = vi.fn((event) => event.preventDefault());
+    const ledgerCreated = vi.fn();
+    const setDb = vi.fn();
+
+    const QuickCreateHost = () => (
+      <form onSubmit={parentSubmit}>
+        {createPortal(
+          <ChartAccountForm
+            db={db}
+            setDb={setDb}
+            currentCompany={company}
+            onClose={() => {}}
+            onCreated={ledgerCreated}
+          />,
+          document.body
+        )}
+      </form>
+    );
+    render(<QuickCreateHost />);
+
+    await user.type(screen.getByLabelText(/^Ledger Name \*$/), 'Professional Fees');
+    await pickGroup(user, 'Indirect Expenses');
+    await user.click(screen.getByRole('button', { name: 'Save', exact: true }));
+
+    expect(ledgerCreated).toHaveBeenCalledWith(expect.objectContaining({ name: 'Professional Fees' }));
+    expect(setDb).toHaveBeenCalled();
+    expect(parentSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe('expense-ledger TDS applicability', () => {
+  it('shows the option immediately when quick-create is restricted to expense groups', () => {
+    renderForm({ includeGroupIds: [11] });
+    expect(screen.getByLabelText('TDS Applicable')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ledger Group *')).toHaveTextContent('Indirect Expenses');
+  });
+
+  it('stores an explicit applicability choice on an expense ledger', async () => {
+    const user = userEvent.setup();
+    const ledgerCreated = vi.fn();
+    renderForm({ onCreated: ledgerCreated });
+
+    await user.type(screen.getByLabelText(/^Ledger Name \*$/), 'Professional Fees');
+    await pickGroup(user, 'Indirect Expenses');
+    await user.selectOptions(screen.getByLabelText('TDS Applicable'), 'yes');
+    await user.click(screen.getByRole('button', { name: 'Save', exact: true }));
+
+    expect(ledgerCreated).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Professional Fees',
+      tdsApplicable: true,
+    }));
+  });
+
+  it('builds the TDS base only from applicable expense ledgers', () => {
+    const ledgers = [
+      { id: 1, tdsApplicable: true },
+      { id: 2, tdsApplicable: false },
+    ];
+    const lines = [
+      { ledgerId: 1, amount: 250000 },
+      { ledgerId: 2, amount: 100000 },
+    ];
+    expect(expenseTdsBase(lines, ledgers)).toBe(250000);
   });
 });

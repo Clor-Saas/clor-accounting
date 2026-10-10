@@ -591,6 +591,10 @@ const RecordReceiptForm = ({ db, setDb, currentCompany, onClose, initialData = n
 
     const customers = safeArray(db.customers).filter((c) => c.companyId === companyId);
     const customer = customers.find((c) => Number(c.id) === customerIdNum) || null;
+    if (customer?.isActive === false) {
+      notify.error('This customer is inactive. Activate the customer before recording a receipt.');
+      return;
+    }
     const customerName = customer?.name || customer?.displayName || customer?.companyName || customer?.legalName || '';
 
     const paymentId = getNextNumericId(db.payments);
@@ -839,7 +843,7 @@ const RecordReceiptForm = ({ db, setDb, currentCompany, onClose, initialData = n
   const onFormKeyDown = useDocumentFormKeys({ formRef });
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} noValidate className="space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} onKeyDown={onFormKeyDown} noValidate className="ui-creation-form space-y-3">
       {/* The bar an invoice carries: the document's name on the left, every
           way out of it on the right, pinned so Record stays reachable from the
           bottom of a long list of outstanding invoices. */}

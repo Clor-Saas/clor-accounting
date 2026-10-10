@@ -1,13 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { BadgePercent, Ban, Download, FileText, Pencil, Plus, Receipt, Trash2, Truck } from 'lucide-react';
+import { BadgePercent, Ban, FileText, Plus, Receipt, Truck } from 'lucide-react';
 
 import { ColumnHeader, useColumnFilters } from '@ui/components/ColumnFilters';
 import { useListSearch } from '@ui/components/ListToolbar';
 import { EmptyState, TableTotals } from '@ui/components/ui/Primitives';
-import { confirmDialog, notify } from '@ui/components/ui/notify';
 import DocumentListShell from '@ui/components/list/DocumentListShell';
 import { VendorForm } from '../../components/pickers/VendorPicker';
-import PartyDetail from '../parties/PartyDetail';
+import CustomerDetailPage from './CustomerDetailPage';
 import { getVendorDisplayName } from '@ui/utils/contacts';
 import { formatMoney } from '@ui/utils/money';
 import { isGstRegistered, outstandingByParty, standingOf } from '@ui/utils/partyStanding';
@@ -98,63 +97,17 @@ export default function VendorsList({ db, setDb, currentCompany }) {
     { key: 'overdue', label: 'Overdue', value: (r) => standingOf(vendorStanding, r.id).overdue },
   ];
 
-  const getVendorReferences = (vendorId) => {
-    const idStr = String(vendorId);
-    const sources = [
-      { key: 'purchaseOrders', label: 'Purchase Order' },
-      { key: 'bills', label: 'Bill' },
-      { key: 'debitNotes', label: 'Debit Note' },
-      { key: 'expenses', label: 'Expense' },
-    ];
-
-    const refs = [];
-    for (const src of sources) {
-      const docs = Array.isArray(db[src.key]) ? db[src.key] : [];
-      for (const doc of docs) {
-        if (doc?.companyId !== currentCompany.id) continue;
-        const used = String(doc?.vendorId || '') === idStr;
-        if (!used) continue;
-        const num = String(doc?.number || '').trim();
-        refs.push(`${src.label}${num ? ` ${num}` : ''}`);
-      }
-    }
-    return refs;
-  };
-
   const onEditVendor = (vendor) => {
     setEditingVendor(vendor);
     setIsCreating(false);
   };
-
-
-
-  const onDeleteVendor = async (vendor) => {
-    const refs = getVendorReferences(vendor.id);
-    if (refs.length) {
-      const preview = refs.slice(0, 5).join(', ');
-      notify.error(`Cannot delete this vendor because it is used in: ${preview}${refs.length > 5 ? '...' : ''}`);
-      return;
-    }
-
-    const ok = await confirmDialog({ title: 'Please confirm', message: `Delete vendor "${String(vendor.name || vendor.displayName || '').trim() || 'this vendor'}"?`, confirmLabel: 'Yes, continue' });
-    if (!ok) return;
-
-    setDb({
-      ...db,
-      vendors: (Array.isArray(db.vendors) ? db.vendors : []).filter(
-        (v) => !(v.companyId === currentCompany.id && String(v.id) === String(vendor.id))
-      ),
-    });
-  };
-
   if (viewingVendor) {
     return (
-      <PartyDetail
+      <CustomerDetailPage
         db={db}
         currentCompany={currentCompany}
-        party={viewingVendor}
-        kind="vendor"
-        displayName={getVendorDisplayName(viewingVendor)}
+        customer={viewingVendor}
+        partyKind="vendor"
         onBack={() => setViewingVendor(null)}
         onEdit={() => {
           const v = viewingVendor;
@@ -209,6 +162,9 @@ export default function VendorsList({ db, setDb, currentCompany }) {
     <DocumentListShell
       entity="vendors"
       title="Vendors"
+      compact
+      tight
+      denseCards
       company={currentCompany}
       search={{
         value: vendorSearch.query,
@@ -246,13 +202,8 @@ export default function VendorsList({ db, setDb, currentCompany }) {
       statusValue={vendStatus}
       statusCounts={vendStatusCounts}
       onStatusChange={setVendStatus}
-      tip={{
-        storageKey: 'neev.tip.vendors',
-        text: 'Payable and overdue are read off the bills themselves — a vendor with an unregistered GSTIN puts the purchase under reverse charge.',
-        Icon: Truck,
-      }}
     >
-      <div className="overflow-x-auto ui-table-scroll">
+      <div className="overflow-x-auto ui-table-scroll vendor-table-scroll">
         <table className="ui-table ui-table-wide ui-table-sticky">
           <thead>
             <tr>
@@ -263,13 +214,12 @@ export default function VendorsList({ db, setDb, currentCompany }) {
               <ColumnHeader label="GSTIN" col="gstin" state={vendorSearchFilters} />
               <th scope="col" className="ui-num">Payable</th>
               <th scope="col" className="ui-num">Overdue</th>
-              <th scope="col"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody className="ui-rows">
             {visibleVendors.length === 0 ? (
               <tr>
-                <td colSpan="8">
+                <td colSpan="7">
                   <EmptyState
                     icon={Truck}
                     kind="new"
@@ -330,24 +280,6 @@ export default function VendorsList({ db, setDb, currentCompany }) {
                     ) : (
                       <span className="ui-muted">—</span>
                     )}
-                  </td>
-                  <td className="ui-col-meta">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onEditVendor(vendor)}
-                        className="px-3 py-1.5 rounded-lg border ui-surface ui-hover-sunken ui-border-c text-sm flex items-center gap-1"
-                      >
-                        <Pencil size={16} /> Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDeleteVendor(vendor)}
-                        className="px-3 py-1.5 rounded-lg border ui-surface ui-hover-sunken ui-border-c text-sm flex items-center gap-1 text-[rgb(var(--neg))]"
-                      >
-                        <Trash2 size={16} /> Delete
-                      </button>
-                    </div>
                   </td>
                 </tr>
               ))
