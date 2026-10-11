@@ -24,12 +24,17 @@ services:
       - key: NODE_ENV
         value: production
       # Neon connection strings — set in the dashboard (clor_main / clor_payroll
-      # / clor_people).
+      # / clor_people / clor_platform).
       - key: DATABASE_URL
         sync: false
       - key: PAYROLL_DATABASE_URL
         sync: false
       - key: PEOPLE_DATABASE_URL
+        sync: false
+      # Platform DB (accounts, users, sessions, roles, subscriptions). MUST be set
+      # and populated BEFORE deploying the platform-DB split — see
+      # docs/PLATFORM_DB_PROD_ROLLOUT.md. Missing = boot fails on prisma:deploy.
+      - key: PLATFORM_DATABASE_URL
         sync: false
       # Signs auth tokens; required in production. Generated once by Render.
       - key: JWT_SECRET
