@@ -57,6 +57,7 @@ import { batchSerialRouter } from './routes/batchSerial.js';
 import { paymentsRouter } from './routes/payments.js';
 import { gstinRouter } from './routes/gstin.js';
 import { notFound, errorHandler } from './middleware/errors.js';
+import { billingRouter } from './routes/billing.js';
 
 export function buildApp() {
   const app = express();
@@ -184,6 +185,7 @@ export function buildApp() {
   app.use('/api', payrollSetupRouter);
   app.use('/api', posCheckoutRouter);
   app.use('/api', accountRouter);
+  app.use('/api', billingRouter);
   app.use('/api', shareAdminRouter);
   app.use('/api', bankBookRouter);
   app.use('/api', posDayCloseRouter);

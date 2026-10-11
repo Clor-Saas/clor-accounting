@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * Session and credential handling.
@@ -59,7 +60,7 @@ export async function createSession(opts: {
   const refreshToken = randomBytes(48).toString('base64url');
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
 
-  const session = await prisma.session.create({
+  const session = await platformPrisma.session.create({
     data: {
       accountId: opts.accountId,
       userId: opts.userId,
@@ -91,12 +92,12 @@ export class AuthError extends Error {
  */
 export async function rotateSession(refreshToken: string, ctx: { ip?: string; userAgent?: string }) {
   const hash = sha256(String(refreshToken || ''));
-  const session = await prisma.session.findUnique({ where: { refreshTokenHash: hash } });
+  const session = await platformPrisma.session.findUnique({ where: { refreshTokenHash: hash } });
 
   if (!session) throw new AuthError('Invalid session');
 
   if (session.revokedAt) {
-    await prisma.session.updateMany({
+    await platformPrisma.session.updateMany({
       where: { userId: session.userId, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: 'REUSE_DETECTED' },
     });
@@ -115,7 +116,7 @@ export async function rotateSession(refreshToken: string, ctx: { ip?: string; us
     throw new AuthError('Session expired. Please sign in again.');
   }
 
-  const user = await prisma.user.findFirst({
+  const user = await platformPrisma.user.findFirst({
     where: { id: session.userId, isActive: true },
     select: { id: true, accountId: true },
   });
@@ -128,7 +129,7 @@ export async function rotateSession(refreshToken: string, ctx: { ip?: string; us
     userAgent: ctx.userAgent,
   });
 
-  await prisma.session.update({
+  await platformPrisma.session.update({
     where: { id: session.id },
     data: {
       revokedAt: new Date(),
@@ -147,23 +148,23 @@ export async function rotateSession(refreshToken: string, ctx: { ip?: string; us
 
 export async function revokeSession(refreshToken: string, reason = 'LOGOUT') {
   const hash = sha256(String(refreshToken || ''));
-  const session = await prisma.session.findUnique({ where: { refreshTokenHash: hash } });
+  const session = await platformPrisma.session.findUnique({ where: { refreshTokenHash: hash } });
   if (!session || session.revokedAt) return null;
-  return prisma.session.update({
+  return platformPrisma.session.update({
     where: { id: session.id },
     data: { revokedAt: new Date(), revokedReason: reason },
   });
 }
 
 export async function revokeAllSessions(userId: string, reason: string) {
-  return prisma.session.updateMany({
+  return platformPrisma.session.updateMany({
     where: { userId, revokedAt: null },
     data: { revokedAt: new Date(), revokedReason: reason },
   });
 }
 
 export async function listSessions(accountId: string, userId: string) {
-  return prisma.session.findMany({
+  return platformPrisma.session.findMany({
     where: { accountId, userId, revokedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { lastSeenAt: 'desc' },
     select: { id: true, ip: true, userAgent: true, createdAt: true, lastSeenAt: true, expiresAt: true },
@@ -184,14 +185,14 @@ export async function registerFailedLogin(
   maxFailed = MAX_FAILED_LOGINS,
   lockoutMinutes = LOCKOUT_MINUTES
 ) {
-  const user = await prisma.user.update({
+  const user = await platformPrisma.user.update({
     where: { id: userId },
     data: { failedLoginCount: { increment: 1 } },
     select: { failedLoginCount: true },
   });
 
   if (user.failedLoginCount >= maxFailed) {
-    await prisma.user.update({
+    await platformPrisma.user.update({
       where: { id: userId },
       data: {
         lockedUntil: new Date(Date.now() + lockoutMinutes * 60 * 1000),
@@ -204,7 +205,7 @@ export async function registerFailedLogin(
 }
 
 export async function clearFailedLogins(userId: string) {
-  await prisma.user.update({
+  await platformPrisma.user.update({
     where: { id: userId },
     data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
   });
@@ -216,13 +217,13 @@ export async function clearFailedLogins(userId: string) {
 
 export async function issuePasswordResetToken(user: { id: string; accountId: string }, ip?: string) {
   // Any earlier token is spent: requesting a new link must invalidate the old.
-  await prisma.passwordResetToken.updateMany({
+  await platformPrisma.passwordResetToken.updateMany({
     where: { userId: user.id, usedAt: null },
     data: { usedAt: new Date() },
   });
 
   const token = randomBytes(32).toString('base64url');
-  await prisma.passwordResetToken.create({
+  await platformPrisma.passwordResetToken.create({
     data: {
       accountId: user.accountId,
       userId: user.id,
@@ -236,12 +237,12 @@ export async function issuePasswordResetToken(user: { id: string; accountId: str
 }
 
 export async function consumePasswordResetToken(token: string) {
-  const row = await prisma.passwordResetToken.findUnique({ where: { tokenHash: sha256(String(token || '')) } });
+  const row = await platformPrisma.passwordResetToken.findUnique({ where: { tokenHash: sha256(String(token || '')) } });
   if (!row) throw new AuthError('Invalid or expired reset link', 400);
   if (row.usedAt) throw new AuthError('That reset link has already been used', 400);
   if (row.expiresAt.getTime() < Date.now()) throw new AuthError('That reset link has expired', 400);
 
-  await prisma.passwordResetToken.update({ where: { id: row.id }, data: { usedAt: new Date() } });
+  await platformPrisma.passwordResetToken.update({ where: { id: row.id }, data: { usedAt: new Date() } });
   return row;
 }
 
@@ -250,13 +251,13 @@ export async function consumePasswordResetToken(token: string) {
 // ---------------------------------------------------------------------------
 
 export async function issueEmailVerificationToken(user: { id: string; accountId: string; email: string }) {
-  await prisma.emailVerificationToken.updateMany({
+  await platformPrisma.emailVerificationToken.updateMany({
     where: { userId: user.id, usedAt: null },
     data: { usedAt: new Date() },
   });
 
   const token = randomBytes(32).toString('base64url');
-  await prisma.emailVerificationToken.create({
+  await platformPrisma.emailVerificationToken.create({
     data: {
       accountId: user.accountId,
       userId: user.id,
@@ -269,15 +270,15 @@ export async function issueEmailVerificationToken(user: { id: string; accountId:
 }
 
 export async function consumeEmailVerificationToken(token: string) {
-  const row = await prisma.emailVerificationToken.findUnique({
+  const row = await platformPrisma.emailVerificationToken.findUnique({
     where: { tokenHash: sha256(String(token || '')) },
   });
   if (!row) throw new AuthError('Invalid or expired verification link', 400);
   if (row.usedAt) throw new AuthError('That link has already been used', 400);
   if (row.expiresAt.getTime() < Date.now()) throw new AuthError('That verification link has expired', 400);
 
-  await prisma.emailVerificationToken.update({ where: { id: row.id }, data: { usedAt: new Date() } });
-  await prisma.user.update({ where: { id: row.userId }, data: { emailVerifiedAt: new Date() } });
+  await platformPrisma.emailVerificationToken.update({ where: { id: row.id }, data: { usedAt: new Date() } });
+  await platformPrisma.user.update({ where: { id: row.userId }, data: { emailVerifiedAt: new Date() } });
   return row;
 }
 
@@ -295,7 +296,7 @@ export async function recordAuthEvent(e: {
   detail?: string;
 }) {
   try {
-    await prisma.authEvent.create({
+    await platformPrisma.authEvent.create({
       data: {
         accountId: e.accountId ?? null,
         userId: e.userId ?? null,

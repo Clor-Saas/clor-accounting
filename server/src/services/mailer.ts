@@ -4,6 +4,7 @@ import nodemailer from 'nodemailer';
 // namespace, so the transporter type is imported by name.
 import type { Transporter } from 'nodemailer';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { TEMPLATE_BY_KEY, render } from '../constants/emailTemplates.js';
 
 /**
@@ -97,7 +98,7 @@ function buildSmtp(opts: {
 
 export async function resolveTransport(accountId?: string | null, orgId?: string | null): Promise<ResolvedTransport> {
   if (orgId) {
-    const setting = await prisma.emailSetting.findUnique({ where: { orgId } });
+    const setting = await platformPrisma.emailSetting.findUnique({ where: { orgId } });
     if (setting && setting.provider === 'SMTP' && setting.host && setting.port) {
       const from = setting.fromEmail
         ? `${setting.fromName || APP_NAME} <${setting.fromEmail}>`
@@ -173,11 +174,11 @@ export async function sendTemplate(opts: SendOptions) {
 
   // Optional notifications honour the org's settings; transactional mail does not.
   if (!template.transactional && !opts.transactional && opts.orgId) {
-    const setting = await prisma.notificationSetting.findUnique({
+    const setting = await platformPrisma.notificationSetting.findUnique({
       where: { orgId_eventKey: { orgId: opts.orgId, eventKey: template.key } },
     });
     if (setting && !setting.enabled) {
-      return prisma.emailOutbox.create({
+      return platformPrisma.emailOutbox.create({
         data: {
           accountId: opts.accountId ?? null,
           orgId: opts.orgId ?? null,
@@ -195,7 +196,7 @@ export async function sendTemplate(opts: SendOptions) {
     }
   }
 
-  const row = await prisma.emailOutbox.create({
+  const row = await platformPrisma.emailOutbox.create({
     data: {
       accountId: opts.accountId ?? null,
       orgId: opts.orgId ?? null,
@@ -215,7 +216,7 @@ export async function sendTemplate(opts: SendOptions) {
 
 /** Attempts delivery of one outbox row and records the result. */
 export async function deliver(outboxId: string, accountId?: string | null, orgId?: string | null) {
-  const row = await prisma.emailOutbox.findUnique({ where: { id: outboxId } });
+  const row = await platformPrisma.emailOutbox.findUnique({ where: { id: outboxId } });
   if (!row || row.status === 'SENT' || row.status === 'SUPPRESSED') return row;
 
   const transport = await resolveTransport(accountId ?? row.accountId, orgId ?? row.orgId);
@@ -233,12 +234,12 @@ export async function deliver(outboxId: string, accountId?: string | null, orgId
     }
     // The capture transport records the message without dialling out.
 
-    return prisma.emailOutbox.update({
+    return platformPrisma.emailOutbox.update({
       where: { id: row.id },
       data: { status: 'SENT', sentAt: new Date(), attempts: { increment: 1 }, lastError: null },
     });
   } catch (e: any) {
-    return prisma.emailOutbox.update({
+    return platformPrisma.emailOutbox.update({
       where: { id: row.id },
       data: {
         status: 'FAILED',
@@ -251,7 +252,7 @@ export async function deliver(outboxId: string, accountId?: string | null, orgId
 
 /** Retries failed messages, newest first. Safe to call repeatedly. */
 export async function retryFailed(accountId: string, orgId: string, limit = 25) {
-  const rows = await prisma.emailOutbox.findMany({
+  const rows = await platformPrisma.emailOutbox.findMany({
     where: { accountId, orgId, status: 'FAILED', attempts: { lt: 5 } },
     orderBy: { createdAt: 'desc' },
     take: limit,

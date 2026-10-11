@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * One listening server for the whole file, not one per request.
@@ -159,7 +160,7 @@ describe('sign-in methods', () => {
     // Honest about not being usable yet.
     expect(res.body.provider.status).toBe('CONFIGURED_NOT_ACTIVE');
 
-    const stored = await prisma.authProvider.findUnique({ where: { id: res.body.provider.id } });
+    const stored = await platformPrisma.authProvider.findUnique({ where: { id: res.body.provider.id } });
     expect(stored?.clientSecretEnc).toBeTruthy();
     expect(stored?.clientSecretEnc).not.toContain('the-actual-secret');
   });
@@ -199,7 +200,7 @@ describe('sign-in methods', () => {
       .send({ kind: 'OIDC', name: `Renamed ${rnd()}`, issuer: 'https://issuer', clientId: 'x' })
       .expect(200);
 
-    const stored = await prisma.authProvider.findUnique({ where: { id: created.body.provider.id } });
+    const stored = await platformPrisma.authProvider.findUnique({ where: { id: created.body.provider.id } });
     expect(stored?.clientSecretEnc).toBeTruthy();
   });
 

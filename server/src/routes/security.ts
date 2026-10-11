@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -65,7 +66,7 @@ securityRouter.put('/orgs/:orgId/security/policy', EDIT, async (req, res) => {
   const { accountId, orgId } = req.tenant!;
   const body = policySchema.parse(req.body);
 
-  const saved = await prisma.authPolicy.upsert({
+  const saved = await platformPrisma.authPolicy.upsert({
     where: { orgId },
     update: { ...body, allowedEmailDomains: body.allowedEmailDomains ?? null, updatedByUserId: req.auth!.userId },
     create: {
@@ -135,7 +136,7 @@ const publicProvider = (p: any) => ({
 
 securityRouter.get('/orgs/:orgId/security/providers', VIEW, async (req, res) => {
   if (!orgOk(req, res)) return;
-  const rows = await prisma.authProvider.findMany({
+  const rows = await platformPrisma.authProvider.findMany({
     where: { accountId: req.tenant!.accountId, orgId: req.tenant!.orgId },
     orderBy: { createdAt: 'asc' },
   });
@@ -170,7 +171,7 @@ securityRouter.post('/orgs/:orgId/security/providers', EDIT, async (req, res) =>
   if (problem) return res.status(400).json({ error: problem });
 
   try {
-    const created = await prisma.authProvider.create({
+    const created = await platformPrisma.authProvider.create({
       data: {
         accountId,
         orgId,
@@ -210,7 +211,7 @@ securityRouter.post('/orgs/:orgId/security/providers', EDIT, async (req, res) =>
 securityRouter.patch('/orgs/:orgId/security/providers/:providerId', EDIT, async (req, res) => {
   if (!orgOk(req, res)) return;
   const { accountId, orgId } = req.tenant!;
-  const existing = await prisma.authProvider.findFirst({
+  const existing = await platformPrisma.authProvider.findFirst({
     where: { id: String(req.params.providerId), accountId, orgId },
   });
   if (!existing) return res.status(404).json({ error: 'Sign-in method not found' });
@@ -219,7 +220,7 @@ securityRouter.patch('/orgs/:orgId/security/providers/:providerId', EDIT, async 
   const problem = validateProvider(body, Boolean(existing.clientSecretEnc));
   if (problem) return res.status(400).json({ error: problem });
 
-  const updated = await prisma.authProvider.update({
+  const updated = await platformPrisma.authProvider.update({
     where: { id: existing.id },
     data: {
       name: body.name.trim(),
@@ -247,11 +248,11 @@ securityRouter.patch('/orgs/:orgId/security/providers/:providerId', EDIT, async 
 securityRouter.delete('/orgs/:orgId/security/providers/:providerId', EDIT, async (req, res) => {
   if (!orgOk(req, res)) return;
   const { accountId, orgId } = req.tenant!;
-  const existing = await prisma.authProvider.findFirst({
+  const existing = await platformPrisma.authProvider.findFirst({
     where: { id: String(req.params.providerId), accountId, orgId },
   });
   if (!existing) return res.status(404).json({ error: 'Sign-in method not found' });
-  await prisma.authProvider.delete({ where: { id: existing.id } });
+  await platformPrisma.authProvider.delete({ where: { id: existing.id } });
   await recordAuthEvent({
     accountId,
     userId: req.auth!.userId,
@@ -294,7 +295,7 @@ securityRouter.post('/orgs/:orgId/security/change-password', async (req, res) =>
   if (!orgOk(req, res)) return;
   const body = changePasswordSchema.parse(req.body);
 
-  const user = await prisma.user.findUnique({
+  const user = await platformPrisma.user.findUnique({
     where: { id: req.auth!.userId },
     select: { id: true, passwordHash: true },
   });
@@ -316,7 +317,7 @@ securityRouter.post('/orgs/:orgId/security/change-password', async (req, res) =>
   if (problem) return res.status(400).json({ error: problem });
 
   const rounds = Number(process.env.BCRYPT_ROUNDS || 12);
-  await prisma.user.update({
+  await platformPrisma.user.update({
     where: { id: user.id },
     data: { passwordHash: await bcrypt.hash(body.newPassword, rounds) },
   });
@@ -341,7 +342,7 @@ securityRouter.post('/orgs/:orgId/security/change-password', async (req, res) =>
 
 securityRouter.get('/orgs/:orgId/security/events', VIEW, async (req, res) => {
   if (!orgOk(req, res)) return;
-  const events = await prisma.authEvent.findMany({
+  const events = await platformPrisma.authEvent.findMany({
     where: {
       accountId: req.tenant!.accountId,
       ...(req.query.userId ? { userId: String(req.query.userId) } : {}),
@@ -353,7 +354,7 @@ securityRouter.get('/orgs/:orgId/security/events', VIEW, async (req, res) => {
 
   const userIds = Array.from(new Set(events.map((e) => e.userId).filter(Boolean))) as string[];
   const users = userIds.length
-    ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true, email: true } })
+    ? await platformPrisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true, email: true } })
     : [];
   const byId = new Map(users.map((u) => [u.id, u]));
 

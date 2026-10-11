@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { decryptSecret, encryptSecret } from '../services/mailer.js';
 
 /**
@@ -62,7 +63,7 @@ describe('email verification', () => {
     expect(signup.body.emailVerificationSent).toBe(true);
     expect(signup.body.devVerifyToken).toBeTruthy();
 
-    const sent = await prisma.emailOutbox.findFirst({
+    const sent = await platformPrisma.emailOutbox.findFirst({
       where: { toEmail: email, templateKey: 'auth.verify_email' },
     });
     expect(sent?.status).toBe('SENT');
@@ -80,7 +81,7 @@ describe('email verification', () => {
 
     await request(app).post('/api/auth/verify-email').send({ token: signup.body.devVerifyToken }).expect(200);
 
-    const user = await prisma.user.findUnique({
+    const user = await platformPrisma.user.findUnique({
       where: { id: signup.body.user.id },
       select: { emailVerifiedAt: true },
     });
@@ -135,7 +136,7 @@ describe('email settings', () => {
     expect(res.body.settings.hasPassword).toBe(true);
     expect(JSON.stringify(res.body)).not.toContain('super-secret-password');
 
-    const stored = await prisma.emailSetting.findUnique({ where: { orgId: owner.orgId } });
+    const stored = await platformPrisma.emailSetting.findUnique({ where: { orgId: owner.orgId } });
     expect(stored?.passwordEnc).toBeTruthy();
     expect(stored?.passwordEnc).not.toContain('super-secret-password');
     expect(decryptSecret(stored!.passwordEnc!)).toBe('super-secret-password');
@@ -148,7 +149,7 @@ describe('email settings', () => {
       .send({ provider: 'SMTP', host: 'smtp.example.com', port: 465, secure: true, username: 'postmaster' })
       .expect(200);
 
-    const stored = await prisma.emailSetting.findUnique({ where: { orgId: owner.orgId } });
+    const stored = await platformPrisma.emailSetting.findUnique({ where: { orgId: owner.orgId } });
     expect(decryptSecret(stored!.passwordEnc!)).toBe('super-secret-password');
     expect(stored?.port).toBe(465);
   });
@@ -284,7 +285,7 @@ describe('notification preferences', () => {
       .send({ number: `N-${rnd()}`, date: '2026-08-17', customerName: 'X', subtotal: 5000, total: 5000, items: [] })
       .expect(201);
 
-    const suppressed = await prisma.emailOutbox.findFirst({
+    const suppressed = await platformPrisma.emailOutbox.findFirst({
       where: { orgId: org.orgId, templateKey: 'approval.requested', toEmail: approverEmail },
     });
     expect(suppressed?.status).toBe('SUPPRESSED');
@@ -310,7 +311,7 @@ describe('notifications on real events', () => {
       })
       .expect(201);
 
-    const msg = await prisma.emailOutbox.findFirst({ where: { toEmail: email, templateKey: 'auth.user_invited' } });
+    const msg = await platformPrisma.emailOutbox.findFirst({ where: { toEmail: email, templateKey: 'auth.user_invited' } });
     expect(msg?.status).toBe('SENT');
     expect(msg?.subject).toMatch(/added to/i);
   });
@@ -330,7 +331,7 @@ describe('notifications on real events', () => {
       })
       .expect(201);
 
-    const msg = await prisma.emailOutbox.findFirst({ where: { toEmail: email, templateKey: 'auth.user_invited' } });
+    const msg = await platformPrisma.emailOutbox.findFirst({ where: { toEmail: email, templateKey: 'auth.user_invited' } });
     expect(msg?.status).toBe('FAILED');
     expect(msg?.attempts).toBeGreaterThan(0);
     expect(msg?.lastError).toBeTruthy();
@@ -343,13 +344,13 @@ describe('notifications on real events', () => {
       .expect(200);
     expect(retry.body.retried).toBeGreaterThan(0);
 
-    const after = await prisma.emailOutbox.findUnique({ where: { id: msg!.id } });
+    const after = await platformPrisma.emailOutbox.findUnique({ where: { id: msg!.id } });
     expect(after?.attempts).toBeGreaterThan(msg!.attempts);
   });
 
   it('emails a password reset link', async () => {
     await request(app).post('/api/auth/forgot-password').send({ email: owner.email }).expect(200);
-    const msg = await prisma.emailOutbox.findFirst({
+    const msg = await platformPrisma.emailOutbox.findFirst({
       where: { toEmail: owner.email, templateKey: 'auth.password_reset' },
       orderBy: { createdAt: 'desc' },
     });

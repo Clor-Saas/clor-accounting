@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 export type TenantContext = {
   accountId: string;
@@ -55,7 +56,7 @@ export async function requireTenantContext(req: Request, res: Response, next: Ne
   if (!orgId) return res.status(400).json({ error: 'Missing x-org-id' });
   if (!branchId) return res.status(400).json({ error: 'Missing x-branch-id' });
 
-  const orgMember = await prisma.userOrgMembership.findFirst({
+  const orgMember = await platformPrisma.userOrgMembership.findFirst({
     where: { orgId, userId },
     select: { accountId: true },
   });
@@ -64,7 +65,7 @@ export async function requireTenantContext(req: Request, res: Response, next: Ne
   // The owning account, established by the membership that just authorised it.
   const accountId = orgMember.accountId;
 
-  let branchMember = await prisma.userBranchMembership.findFirst({
+  let branchMember = await platformPrisma.userBranchMembership.findFirst({
     where: { accountId, orgId, branchId, userId },
     select: { id: true },
   });
@@ -80,17 +81,17 @@ export async function requireTenantContext(req: Request, res: Response, next: Ne
    * rather than re-derived on every request.
    */
   if (!branchMember) {
-    const org = await prisma.org.findFirst({
+    const org = await platformPrisma.org.findFirst({
       where: { accountId, id: orgId },
       select: { createdByUserId: true },
     });
     if (org?.createdByUserId === userId) {
-      const inOrg = await prisma.branch.findFirst({
+      const inOrg = await platformPrisma.branch.findFirst({
         where: { id: branchId, accountId, orgId },
         select: { id: true },
       });
       if (inOrg) {
-        branchMember = await prisma.userBranchMembership.create({
+        branchMember = await platformPrisma.userBranchMembership.create({
           data: { accountId, orgId, branchId, userId },
           select: { id: true },
         });
@@ -99,7 +100,7 @@ export async function requireTenantContext(req: Request, res: Response, next: Ne
   }
   if (!branchMember) return res.status(403).json({ error: 'No access to branch' });
 
-  const allowed = await prisma.userBranchMembership.findMany({
+  const allowed = await platformPrisma.userBranchMembership.findMany({
     where: { accountId, orgId, userId },
     select: { branchId: true },
   });
@@ -116,7 +117,7 @@ export async function requireTenantContext(req: Request, res: Response, next: Ne
   let resolvedWarehouseId: string | undefined;
 
   if (warehouseId) {
-    const allWh = await prisma.userWarehouseAccess.findMany({
+    const allWh = await platformPrisma.userWarehouseAccess.findMany({
       where: { accountId, orgId, userId },
       select: { warehouseId: true },
     });
@@ -131,7 +132,7 @@ export async function requireTenantContext(req: Request, res: Response, next: Ne
     // permission safety net in rbac.ts, and is deliberately narrow — it applies
     // to the creator of this org and to nobody else.
     if (!allowedWarehouseIds.includes(warehouseId)) {
-      const org = await prisma.org.findFirst({
+      const org = await platformPrisma.org.findFirst({
         where: { accountId, id: orgId },
         select: { createdByUserId: true },
       });

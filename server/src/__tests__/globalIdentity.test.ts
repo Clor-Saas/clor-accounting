@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * One person, one login, access anywhere they are invited.
@@ -47,7 +48,7 @@ async function makeOwner(label: string): Promise<Owner> {
     .send({ companyName: `GID ${label} ${Date.now()}-${rnd()}`, state: 'Karnataka' })
     .expect(200);
   const orgId = setup.body.company.orgId as string;
-  const org = await prisma.org.findUnique({ where: { id: orgId }, select: { accountId: true } });
+  const org = await platformPrisma.org.findUnique({ where: { id: orgId }, select: { accountId: true } });
   return { token: signup.body.token, accountId: org!.accountId, orgId, branchId: setup.body.branch.id, email };
 }
 
@@ -79,7 +80,7 @@ describe('a person already registered elsewhere', () => {
 
     // The same identity, not a second one with the same address.
     expect(res.body.user.accountId).toBe(acme.accountId);
-    expect(await prisma.user.count({ where: { email: acme.email } })).toBe(1);
+    expect(await platformPrisma.user.count({ where: { email: acme.email } })).toBe(1);
   });
 
   /*
@@ -90,8 +91,8 @@ describe('a person already registered elsewhere', () => {
    * nothing — but the role is assigned here the way the product does it.
    */
   const grantRole = async (host: Owner, email: string) => {
-    const user = await prisma.user.findFirst({ where: { email }, select: { id: true } });
-    const role = await prisma.role.findFirst({ where: { orgId: host.orgId }, select: { id: true } });
+    const user = await platformPrisma.user.findFirst({ where: { email }, select: { id: true } });
+    const role = await platformPrisma.role.findFirst({ where: { orgId: host.orgId }, select: { id: true } });
     await request(app)
       .post(`/api/orgs/${host.orgId}/users/${user!.id}/roles`)
       .set(auth(host))
@@ -253,7 +254,7 @@ describe('a person already registered elsewhere', () => {
 describe('invitation does not become a takeover', () => {
   /* Setting a password for an identity you do not own is not an invitation. */
   it('leaves the invited person\'s existing password untouched', async () => {
-    const before = await prisma.user.findFirst({ where: { email: acme.email }, select: { passwordHash: true } });
+    const before = await platformPrisma.user.findFirst({ where: { email: acme.email }, select: { passwordHash: true } });
     await request(app)
       .post('/api/users')
       .set(auth(globex))
@@ -264,7 +265,7 @@ describe('invitation does not become a takeover', () => {
         orgIds: [globex.orgId],
         branchIdsByOrg: { [globex.orgId]: [globex.branchId] },
       });
-    const after = await prisma.user.findFirst({ where: { email: acme.email }, select: { passwordHash: true } });
+    const after = await platformPrisma.user.findFirst({ where: { email: acme.email }, select: { passwordHash: true } });
     expect(after?.passwordHash).toBe(before?.passwordHash);
 
     // And the original password still works.
@@ -275,7 +276,7 @@ describe('invitation does not become a takeover', () => {
 describe('an email is one person', () => {
   it('is unique across the whole product, not per account', async () => {
     await expect(
-      prisma.user.create({
+      platformPrisma.user.create({
         data: { accountId: globex.accountId, email: acme.email, fullName: 'Clone', passwordHash: 'x' },
       })
     ).rejects.toThrow();

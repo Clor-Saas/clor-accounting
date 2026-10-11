@@ -1,4 +1,5 @@
 import { prisma } from './prisma.js';
+import { platformPrisma } from './platformPrisma.js';
 
 // When a branch chooses "Share ledgers and settings of head office":
 // - masters can be resolved from (current branch) OR (parent/head-office branch) OR (org-shared null)
@@ -11,7 +12,7 @@ export async function getEffectiveMasterBranchIds(input: {
 }): Promise<string[]> {
   const { accountId, orgId, branchId } = input;
 
-  const branch = await prisma.branch.findFirst({
+  const branch = await platformPrisma.branch.findFirst({
     where: { accountId, orgId, id: branchId },
     select: { id: true, parentBranchId: true, shareHeadOfficeSettings: true },
   });

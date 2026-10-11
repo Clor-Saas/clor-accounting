@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { randomBytes } from 'node:crypto';
 
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -107,8 +108,8 @@ sharePublicRouter.get('/public/invoice/:token', async (req, res) => {
   if (!invoice) return res.status(404).json({ error: 'This link is no longer available' });
 
   const [org, headOffice] = await Promise.all([
-    prisma.org.findFirst({ where: { id: link.orgId }, select: { name: true } }),
-    prisma.branch.findFirst({
+    platformPrisma.org.findFirst({ where: { id: link.orgId }, select: { name: true } }),
+    platformPrisma.branch.findFirst({
       where: { orgId: link.orgId, branchCode: 'HO' },
       select: { addressLine1: true, city: true, state: true, gstin: true },
     }),

@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { currentTenant, withTenant, withoutTenantBoundary } from '../utils/tenantDb.js';
 
 /**
@@ -17,7 +18,7 @@ import { currentTenant, withTenant, withoutTenantBoundary } from '../utils/tenan
 const app = buildApp();
 const rnd = () => Math.random().toString(36).slice(2, 8);
 
-type Company = { token: string; orgId: string; branchId: string; name: string };
+type Company = { token: string; orgId: string; branchId: string; warehouseId: string; name: string };
 
 async function makeCompany(): Promise<Company> {
   const email = `rls.${Date.now()}.${rnd()}@example.com`;
@@ -31,10 +32,23 @@ async function makeCompany(): Promise<Company> {
     .set('Authorization', `Bearer ${signup.body.token}`)
     .send({ companyName: name, state: 'Karnataka' })
     .expect(200);
+  /*
+   * The example tenant table is Warehouse, an accounting-database table that
+   * carries an orgId and a tenant policy. Branch would read more naturally, but
+   * it now lives in the platform database — a separate client with no
+   * withTenant() boundary — so it cannot demonstrate accounting's row-level
+   * security. Setup creates one "Main Store" warehouse per org, which is the
+   * row this company is shown and the other is denied.
+   */
+  const warehouse = await prisma.warehouse.findFirstOrThrow({
+    where: { orgId: setup.body.company.orgId },
+    select: { id: true },
+  });
   return {
     token: signup.body.token,
     orgId: setup.body.company.orgId,
     branchId: setup.body.branch.id,
+    warehouseId: warehouse.id,
     name,
   };
 }
@@ -59,9 +73,9 @@ describe('row-level security', () => {
   });
 
   it('shows a company its own rows', async () => {
-    const seen = await withTenant(a.orgId, (db) => db.branch.findMany({ select: { id: true } }));
+    const seen = await withTenant(a.orgId, (db) => db.warehouse.findMany({ select: { id: true } }));
     expect(seen.length).toBeGreaterThan(0);
-    expect(seen.map((r) => r.id)).toContain(a.branchId);
+    expect(seen.map((r) => r.id)).toContain(a.warehouseId);
   });
 
   it('hides another company’s rows even when the query asks for them by id', async () => {
@@ -70,32 +84,33 @@ describe('row-level security', () => {
      * forgets to scope it. The query below is exactly that mistake, written
      * deliberately — and the database returns nothing.
      */
-    const stolen = await withTenant(a.orgId, (db) => db.branch.findFirst({ where: { id: b.branchId } }));
+    const stolen = await withTenant(a.orgId, (db) => db.warehouse.findFirst({ where: { id: b.warehouseId } }));
     expect(stolen).toBeNull();
   });
 
   it('hides another company’s rows from a raw query too', async () => {
     /* Below the ORM, where a `where` clause is whatever somebody typed. */
     const rows = await withTenant(a.orgId, (db) =>
-      db.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id FROM "Branch" WHERE id = '${b.branchId}'`)
+      db.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id FROM "Warehouse" WHERE id = '${b.warehouseId}'`)
     );
     expect(rows).toHaveLength(0);
   });
 
   it('refuses to write a row into another company', async () => {
-    const other = await prisma.org.findFirstOrThrow({ where: { id: b.orgId }, select: { accountId: true } });
+    const other = await platformPrisma.org.findFirstOrThrow({ where: { id: b.orgId }, select: { accountId: true } });
 
     /* WITH CHECK, not USING: this is a row the query is trying to create in
        somebody else's company, and the database declines rather than trusting
        the caller to have scoped its own insert. */
     await expect(
       withTenant(a.orgId, (db) =>
-        db.branch.create({
+        db.warehouse.create({
           data: {
             accountId: other.accountId,
             orgId: b.orgId,
-            branchCode: `X${rnd()}`,
-            branchName: 'Smuggled',
+            branchId: b.branchId,
+            name: 'Smuggled',
+            createdByUserId: 'rls-test',
           } as any,
         })
       )
@@ -119,9 +134,9 @@ describe('row-level security', () => {
 
   it('lets a caller cross the boundary only by saying so', async () => {
     const all = await withoutTenantBoundary('a test asserting the escape hatch works', (db) =>
-      db.branch.findMany({ where: { id: { in: [a.branchId, b.branchId] } }, select: { id: true } })
+      db.warehouse.findMany({ where: { id: { in: [a.warehouseId, b.warehouseId] } }, select: { id: true } })
     );
-    expect(all.map((r) => r.id).sort()).toEqual([a.branchId, b.branchId].sort());
+    expect(all.map((r) => r.id).sort()).toEqual([a.warehouseId, b.warehouseId].sort());
   });
 
   it('will not cross the boundary without a reason', async () => {

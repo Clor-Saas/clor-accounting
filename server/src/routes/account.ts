@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -33,13 +34,13 @@ accountRouter.get('/account/overview', ACCOUNT_VIEW, async (req, res) => {
   const { accountId } = req.tenant!;
 
   const [account, orgs, users, entitlement] = await Promise.all([
-    prisma.account.findFirst({ where: { id: accountId }, select: { id: true, name: true, createdAt: true } }),
-    prisma.org.findMany({
+    platformPrisma.account.findFirst({ where: { id: accountId }, select: { id: true, name: true, createdAt: true } }),
+    platformPrisma.org.findMany({
       where: { accountId },
       select: { id: true, name: true, slug: true, pan: true, createdAt: true },
       orderBy: { name: 'asc' },
     }),
-    prisma.user.findMany({
+    platformPrisma.user.findMany({
       where: { accountId },
       select: { id: true, fullName: true, email: true, isActive: true, lastLoginAt: true },
       orderBy: { fullName: 'asc' },
@@ -62,11 +63,11 @@ accountRouter.get('/account/overview', ACCOUNT_VIEW, async (req, res) => {
    * into CGST and SGST or lands as IGST.
    */
   const [headOffices, memberships, invoices] = await Promise.all([
-    prisma.branch.findMany({
+    platformPrisma.branch.findMany({
       where: { accountId, orgId: { in: orgIds }, branchCode: 'HO' },
       select: { orgId: true, state: true, gstin: true },
     }),
-    prisma.userOrgMembership.groupBy({
+    platformPrisma.userOrgMembership.groupBy({
       by: ['orgId'],
       where: { accountId, orgId: { in: orgIds } },
       _count: true,

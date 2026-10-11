@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * One tenant must not be able to reach another tenant's records.
@@ -82,7 +83,7 @@ async function makeTenant(label: string): Promise<Tenant> {
     .set(auth)
     .send({ partyType: 'CUSTOMER', displayName: `${label} customer`, state: 'Karnataka' });
 
-  const role = await prisma.role.findFirst({ where: { orgId }, select: { id: true } });
+  const role = await platformPrisma.role.findFirst({ where: { orgId }, select: { id: true } });
 
   return {
     token,
@@ -202,7 +203,7 @@ describe("a tenant cannot reach another tenant's records through its own org", (
     expect(invoice?.orgId).toBe(alice.orgId);
     expect(String(invoice?.customerName)).toContain('alice');
 
-    const branch = await prisma.branch.findUnique({ where: { id: alice.branchId } });
+    const branch = await platformPrisma.branch.findUnique({ where: { id: alice.branchId } });
     expect(branch?.branchName).toBe('Head Office');
 
     const warehouse = await prisma.warehouse.findUnique({ where: { id: alice.warehouseId } });

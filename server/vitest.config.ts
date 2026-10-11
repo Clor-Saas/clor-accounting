@@ -48,12 +48,14 @@ const urlFor = (schema: string) => {
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL || urlFor('accounting');
 const TEST_PAYROLL_DATABASE_URL = process.env.TEST_PAYROLL_DATABASE_URL || urlFor('payroll');
 const TEST_PEOPLE_DATABASE_URL = process.env.TEST_PEOPLE_DATABASE_URL || urlFor('people');
+const TEST_PLATFORM_DATABASE_URL = process.env.TEST_PLATFORM_DATABASE_URL || urlFor('platform');
 
 // globalSetup runs in this same process and reads them from here.
 process.env.PG_ADMIN_URL = pgBase();
 process.env.DATABASE_URL = TEST_DATABASE_URL;
 process.env.PAYROLL_DATABASE_URL = TEST_PAYROLL_DATABASE_URL;
 process.env.PEOPLE_DATABASE_URL = TEST_PEOPLE_DATABASE_URL;
+process.env.PLATFORM_DATABASE_URL = TEST_PLATFORM_DATABASE_URL;
 
 export default defineConfig({
   test: {
@@ -67,6 +69,7 @@ export default defineConfig({
       DATABASE_URL: TEST_DATABASE_URL,
       PAYROLL_DATABASE_URL: TEST_PAYROLL_DATABASE_URL,
       PEOPLE_DATABASE_URL: TEST_PEOPLE_DATABASE_URL,
+      PLATFORM_DATABASE_URL: TEST_PLATFORM_DATABASE_URL,
       // Deterministic and fast: rate limiting is exercised by one test that
       // enables it explicitly, and 4 bcrypt rounds keep the suite quick.
       DISABLE_RATE_LIMIT: 'true',

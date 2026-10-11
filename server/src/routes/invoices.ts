@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -233,7 +234,7 @@ const AUDITED_FIELDS = [
  */
 async function auditInvoiceCreated(req: Request, row: any) {
   try {
-    await prisma.auditLog.create({
+    await platformPrisma.auditLog.create({
       data: {
         accountId: req.tenant!.accountId,
         orgId: req.tenant!.orgId,
@@ -282,7 +283,7 @@ async function auditInvoiceChange(
       }
       if (!Object.keys(changes).length) return;
     }
-    await prisma.auditLog.create({
+    await platformPrisma.auditLog.create({
       data: {
         accountId: req.tenant!.accountId,
         orgId: req.tenant!.orgId,

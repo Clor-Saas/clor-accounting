@@ -17,6 +17,7 @@ import request from 'supertest';
 
 const { buildApp } = await import('../app.js');
 const { prisma } = await import('../utils/prisma.js');
+const { platformPrisma } = await import('../utils/platformPrisma.js');
 const { payrollPrisma } = await import('../utils/payrollPrisma.js');
 const { peoplePrisma } = await import('../utils/peoplePrisma.js');
 
@@ -134,7 +135,7 @@ describe('switching a scheme on', () => {
     const c = await makeOwner();
     /* The real tenant, so the route finds it — a scheme under a made-up
        account is simply somebody else's and answers 404. */
-    const org = await prisma.org.findUnique({ where: { id: c.orgId }, select: { accountId: true } });
+    const org = await platformPrisma.org.findUnique({ where: { id: c.orgId }, select: { accountId: true } });
     const scheme = await payrollPrisma.statutoryScheme.create({
       data: { accountId: org!.accountId, orgId: c.orgId, code: 'LWF', name: 'Labour Welfare Fund', createdByUserId: 'u' },
     });

@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 // Example: secure query filtered by userId + accountId + orgId + branchId
 //
@@ -16,7 +17,7 @@ export async function listBranchItemsForUser(input: {
   const { userId, accountId, orgId, branchId } = input;
 
   // 1) Authorization guard: user must be assigned to the org/branch
-  const membership = await prisma.userBranchMembership.findFirst({
+  const membership = await platformPrisma.userBranchMembership.findFirst({
     where: { accountId, orgId, branchId, userId },
     select: { id: true },
   });

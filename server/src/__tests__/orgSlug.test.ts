@@ -2,6 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { normaliseSlug, slugProblem, slugUnavailableReason, suggestSlug, RESERVED_SLUGS } from '../services/slug.js';
 
 /**
@@ -116,7 +117,7 @@ describe('a company created through signup', () => {
     expect(slug.startsWith('agc-traders')).toBe(true);
     expect(slugProblem(slug)).toBeNull();
 
-    const stored = await prisma.org.findUnique({ where: { id: setup.body.company.orgId } });
+    const stored = await platformPrisma.org.findUnique({ where: { id: setup.body.company.orgId } });
     expect(stored?.slug).toBe(slug);
   });
 });

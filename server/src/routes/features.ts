@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -55,8 +56,8 @@ featuresRouter.get('/orgs/:orgId/entitlement', async (req, res) => {
   const { accountId } = req.tenant!;
   const e = await entitlementFor(accountId);
   const [companies, users] = await Promise.all([
-    prisma.org.count({ where: { accountId } }),
-    prisma.user.count({ where: { accountId, isActive: true } }),
+    platformPrisma.org.count({ where: { accountId } }),
+    platformPrisma.user.count({ where: { accountId, isActive: true } }),
   ]);
   /*
    * Packs go out with the entitlement because they are the same question asked
@@ -114,14 +115,14 @@ featuresRouter.put(
     }
 
     for (const [key, enabled] of Object.entries(body.features)) {
-      await prisma.featureSetting.upsert({
+      await platformPrisma.featureSetting.upsert({
         where: { orgId_key: { orgId, key } },
         update: { enabled, updatedByUserId: req.auth!.userId },
         create: { accountId, orgId, key, enabled, updatedByUserId: req.auth!.userId },
       });
     }
 
-    await prisma.auditLog.create({
+    await platformPrisma.auditLog.create({
       data: {
         accountId,
         orgId,

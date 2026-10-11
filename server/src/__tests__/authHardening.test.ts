@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * One listening server for the whole file, not one per request.
@@ -201,7 +202,7 @@ describe('lockout', () => {
     await request(app).post('/api/auth/login').send({ emailOrUsername: u.email, password: 'nope' }).expect(401);
     await request(app).post('/api/auth/login').send({ emailOrUsername: u.email, password: u.password }).expect(200);
 
-    const row = await prisma.user.findUnique({ where: { id: u.id }, select: { failedLoginCount: true, lastLoginAt: true } });
+    const row = await platformPrisma.user.findUnique({ where: { id: u.id }, select: { failedLoginCount: true, lastLoginAt: true } });
     expect(row?.failedLoginCount).toBe(0);
     expect(row?.lastLoginAt).toBeTruthy();
   });
@@ -216,7 +217,7 @@ describe('password reset', () => {
     expect(token).toBeTruthy();
 
     // The raw token must not be recoverable from the database.
-    const stored = await prisma.passwordResetToken.findFirst({ where: { userId: u.id, usedAt: null } });
+    const stored = await platformPrisma.passwordResetToken.findFirst({ where: { userId: u.id, usedAt: null } });
     expect(stored?.tokenHash).toBeTruthy();
     expect(stored?.tokenHash).not.toBe(token);
 
@@ -324,7 +325,7 @@ describe('auth audit', () => {
     await request(app).post('/api/auth/login').send({ emailOrUsername: u.email, password: u.password }).expect(200);
     await request(app).post('/api/auth/logout').send({ refreshToken: u.refreshToken }).expect(200);
 
-    const events = await prisma.authEvent.findMany({ where: { userId: u.id }, select: { eventType: true } });
+    const events = await platformPrisma.authEvent.findMany({ where: { userId: u.id }, select: { eventType: true } });
     const types = events.map((e) => e.eventType);
     expect(types).toContain('LOGIN_FAILED');
     expect(types).toContain('LOGIN_SUCCESS');

@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * The security policy an organisation enforces.
@@ -34,7 +35,7 @@ export const DEFAULT_POLICY: Policy = {
 };
 
 export async function getAuthPolicy(accountId: string, orgId: string): Promise<Policy> {
-  const row = await prisma.authPolicy.findUnique({ where: { orgId } });
+  const row = await platformPrisma.authPolicy.findUnique({ where: { orgId } });
   if (!row) return { ...DEFAULT_POLICY };
   return {
     maxFailedLogins: row.maxFailedLogins,
@@ -56,13 +57,13 @@ export async function getAuthPolicy(accountId: string, orgId: string): Promise<P
  * organisations applies.
  */
 export async function policyForUser(accountId: string, userId: string): Promise<Policy> {
-  const memberships = await prisma.userOrgMembership.findMany({
+  const memberships = await platformPrisma.userOrgMembership.findMany({
     where: { accountId, userId },
     select: { orgId: true },
   });
   if (!memberships.length) return { ...DEFAULT_POLICY };
 
-  const rows = await prisma.authPolicy.findMany({
+  const rows = await platformPrisma.authPolicy.findMany({
     where: { orgId: { in: memberships.map((m) => m.orgId) } },
   });
   if (!rows.length) return { ...DEFAULT_POLICY };

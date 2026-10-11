@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -28,7 +29,7 @@ const requireOrgMatch = (req: any, res: any) => {
 
 /** Ensure a Permission row exists for every catalog entry. Idempotent. */
 export async function ensurePermissionCatalog() {
-  const existing = await prisma.permission.findMany({
+  const existing = await platformPrisma.permission.findMany({
     select: { id: true, module: true, subModule: true, action: true },
   });
   const seen = new Set(existing.map((p) => permKey(p.module, p.subModule, p.action)));
@@ -36,7 +37,7 @@ export async function ensurePermissionCatalog() {
   const missing = flattenCatalog().filter((r) => !seen.has(permKey(r.module, r.subModule, r.action)));
   for (const m of missing) {
     try {
-      await prisma.permission.create({ data: { module: m.module, subModule: m.subModule, action: m.action } });
+      await platformPrisma.permission.create({ data: { module: m.module, subModule: m.subModule, action: m.action } });
     } catch (err: any) {
       // Unique constraint: another request seeded it first.
       if (String(err?.code || '') !== 'P2002') throw err;
@@ -71,13 +72,13 @@ permissionsRouter.get(
     const accountId = req.tenant!.accountId;
     const roleId = String(req.params.roleId);
 
-    const role = await prisma.role.findFirst({
+    const role = await platformPrisma.role.findFirst({
       where: { id: roleId, accountId, orgId: req.tenant!.orgId },
       select: { id: true, name: true, roleType: true, description: true },
     });
     if (!role) return res.status(404).json({ error: 'Role not found' });
 
-    const rows = await prisma.rolePermission.findMany({
+    const rows = await platformPrisma.rolePermission.findMany({
       where: { roleId: role.id, allowed: true },
       select: { permLevel: true, permission: { select: { module: true, subModule: true, action: true } } },
     });
@@ -116,7 +117,7 @@ permissionsRouter.put(
     const orgId = req.tenant!.orgId;
     const roleId = String(req.params.roleId);
 
-    const role = await prisma.role.findFirst({ where: { id: roleId, accountId, orgId }, select: { id: true, name: true } });
+    const role = await platformPrisma.role.findFirst({ where: { id: roleId, accountId, orgId }, select: { id: true, name: true } });
     if (!role) return res.status(404).json({ error: 'Role not found' });
 
     const body = putPermissionsSchema.parse(req.body);
@@ -135,7 +136,7 @@ permissionsRouter.put(
 
     await ensurePermissionCatalog();
 
-    const permissions = await prisma.permission.findMany({
+    const permissions = await platformPrisma.permission.findMany({
       select: { id: true, module: true, subModule: true, action: true },
     });
     const idByKey = new Map(permissions.map((p) => [permKey(p.module, p.subModule, p.action), p.id]));
@@ -144,13 +145,13 @@ permissionsRouter.put(
       wanted.map((w) => idByKey.get(permKey(w.module, w.subModule, w.action))).filter(Boolean) as string[]
     );
 
-    const current = await prisma.rolePermission.findMany({
+    const current = await platformPrisma.rolePermission.findMany({
       where: { roleId: role.id },
       select: { id: true, permissionId: true, allowed: true, permLevel: true },
     });
     const currentByPermId = new Map(current.map((c) => [c.permissionId, c]));
 
-    await prisma.$transaction(async (tx) => {
+    await platformPrisma.$transaction(async (tx) => {
       const levelByPermId = new Map<string, number>();
       for (const [k, lvl] of Object.entries(body.levels || {})) {
         const id = idByKey.get(k);
@@ -172,7 +173,7 @@ permissionsRouter.put(
       if (toRemove.length) await tx.rolePermission.deleteMany({ where: { id: { in: toRemove } } });
     });
 
-    await prisma.auditLog.create({
+    await platformPrisma.auditLog.create({
       data: {
         accountId,
         orgId,
@@ -214,16 +215,16 @@ permissionsRouter.post(
  */
 
 async function syncOwnerRoleIfCreator(accountId: string, orgId: string, userId: string) {
-  const org = await prisma.org.findFirst({ where: { accountId, id: orgId }, select: { createdByUserId: true } });
+  const org = await platformPrisma.org.findFirst({ where: { accountId, id: orgId }, select: { createdByUserId: true } });
   if (!org || org.createdByUserId !== userId) return;
 
-  const adminAssignment = await prisma.userRoleAssignment.findFirst({
+  const adminAssignment = await platformPrisma.userRoleAssignment.findFirst({
     where: { accountId, orgId, userId, role: { roleType: 'ADMIN' } },
     select: { roleId: true },
   });
   if (!adminAssignment) return;
 
-  const held = await prisma.rolePermission.findMany({
+  const held = await platformPrisma.rolePermission.findMany({
     where: { roleId: adminAssignment.roleId, allowed: true },
     select: { permission: { select: { module: true, subModule: true, action: true } } },
   });
@@ -251,7 +252,7 @@ async function syncOwnerRoleIfCreator(accountId: string, orgId: string, userId: 
   if (missing.length === 0) return;
 
   await ensurePermissionCatalog();
-  const permissions = await prisma.permission.findMany({
+  const permissions = await platformPrisma.permission.findMany({
     select: { id: true, module: true, subModule: true, action: true },
   });
 
@@ -259,7 +260,7 @@ async function syncOwnerRoleIfCreator(accountId: string, orgId: string, userId: 
     const k = permKey(p.module, p.subModule, p.action);
     if (!wanted.has(k) || heldKeys.has(k)) continue;
     try {
-      await prisma.rolePermission.create({
+      await platformPrisma.rolePermission.create({
         data: { accountId, orgId, roleId: adminAssignment.roleId, permissionId: p.id, allowed: true },
         select: { id: true },
       });
@@ -289,13 +290,13 @@ permissionsRouter.get('/orgs/:orgId/permissions/me', async (req, res) => {
   const access = await resolveAccess(accountId, orgId, userId, branchId);
 
   const roles = access.roleIds.length
-    ? await prisma.role.findMany({
+    ? await platformPrisma.role.findMany({
         where: { id: { in: access.roleIds } },
         select: { id: true, name: true, roleType: true },
       })
     : [];
 
-  const profiles = await prisma.userRoleProfile.findMany({
+  const profiles = await platformPrisma.userRoleProfile.findMany({
     where: { accountId, orgId, userId },
     select: { profile: { select: { id: true, name: true } } },
   });
@@ -308,11 +309,11 @@ permissionsRouter.get('/orgs/:orgId/permissions/me', async (req, res) => {
   const restrictionsByType: Record<string, string[]> = {};
   for (const [type, ids] of userPermissions) restrictionsByType[type] = Array.from(ids);
 
-  const branches = await prisma.userBranchMembership.findMany({
+  const branches = await platformPrisma.userBranchMembership.findMany({
     where: { accountId, orgId, userId },
     select: { branchId: true },
   });
-  const warehouses = await prisma.userWarehouseAccess.findMany({
+  const warehouses = await platformPrisma.userWarehouseAccess.findMany({
     where: { accountId, orgId, userId },
     select: { warehouseId: true },
   });

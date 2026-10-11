@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -43,7 +44,7 @@ governanceRouter.get('/orgs/:orgId/role-profiles', ROLES_VIEW, async (req, res) 
   if (!orgOk(req, res)) return;
   const { accountId, orgId } = req.tenant!;
 
-  const profiles = await prisma.roleProfile.findMany({
+  const profiles = await platformPrisma.roleProfile.findMany({
     where: { accountId, orgId },
     orderBy: { name: 'asc' },
     include: { roles: { select: { roleId: true } }, _count: { select: { assignments: true } } },
@@ -51,7 +52,7 @@ governanceRouter.get('/orgs/:orgId/role-profiles', ROLES_VIEW, async (req, res) 
 
   const roleIds = Array.from(new Set(profiles.flatMap((p) => p.roles.map((r) => r.roleId))));
   const roles = roleIds.length
-    ? await prisma.role.findMany({ where: { id: { in: roleIds } }, select: { id: true, name: true } })
+    ? await platformPrisma.role.findMany({ where: { id: { in: roleIds } }, select: { id: true, name: true } })
     : [];
   const roleById = new Map(roles.map((r) => [r.id, r]));
 
@@ -71,7 +72,7 @@ governanceRouter.post('/orgs/:orgId/role-profiles', ROLES_EDIT, async (req, res)
   const { accountId, orgId } = req.tenant!;
   const body = profileSchema.parse(req.body);
 
-  const owned = await prisma.role.findMany({
+  const owned = await platformPrisma.role.findMany({
     where: { id: { in: body.roleIds }, accountId, orgId },
     select: { id: true },
   });
@@ -79,7 +80,7 @@ governanceRouter.post('/orgs/:orgId/role-profiles', ROLES_EDIT, async (req, res)
     return res.status(400).json({ error: 'One or more roles do not belong to this organisation' });
   }
 
-  const profile = await prisma.roleProfile.create({
+  const profile = await platformPrisma.roleProfile.create({
     data: {
       accountId,
       orgId,
@@ -100,10 +101,10 @@ governanceRouter.put('/orgs/:orgId/role-profiles/:profileId', ROLES_EDIT, async 
   const profileId = String(req.params.profileId);
   const body = profileSchema.parse(req.body);
 
-  const existing = await prisma.roleProfile.findFirst({ where: { id: profileId, accountId, orgId } });
+  const existing = await platformPrisma.roleProfile.findFirst({ where: { id: profileId, accountId, orgId } });
   if (!existing) return res.status(404).json({ error: 'Role profile not found' });
 
-  const owned = await prisma.role.findMany({
+  const owned = await platformPrisma.role.findMany({
     where: { id: { in: body.roleIds }, accountId, orgId },
     select: { id: true },
   });
@@ -111,7 +112,7 @@ governanceRouter.put('/orgs/:orgId/role-profiles/:profileId', ROLES_EDIT, async 
     return res.status(400).json({ error: 'One or more roles do not belong to this organisation' });
   }
 
-  await prisma.$transaction(async (tx) => {
+  await platformPrisma.$transaction(async (tx) => {
     await tx.roleProfile.update({
       where: { id: profileId },
       data: { name: body.name.trim(), description: body.description ?? null },
@@ -128,12 +129,12 @@ governanceRouter.put('/orgs/:orgId/role-profiles/:profileId', ROLES_EDIT, async 
 governanceRouter.delete('/orgs/:orgId/role-profiles/:profileId', ROLES_EDIT, async (req, res) => {
   if (!orgOk(req, res)) return;
   const { accountId, orgId } = req.tenant!;
-  const existing = await prisma.roleProfile.findFirst({
+  const existing = await platformPrisma.roleProfile.findFirst({
     where: { id: String(req.params.profileId), accountId, orgId },
   });
   if (!existing) return res.status(404).json({ error: 'Role profile not found' });
 
-  await prisma.roleProfile.delete({ where: { id: existing.id } });
+  await platformPrisma.roleProfile.delete({ where: { id: existing.id } });
   res.json({ ok: true });
 });
 
@@ -145,10 +146,10 @@ governanceRouter.post('/orgs/:orgId/users/:userId/role-profiles', USERS_EDIT, as
   const userId = String(req.params.userId);
   const body = assignProfileSchema.parse(req.body);
 
-  const member = await prisma.userOrgMembership.findFirst({ where: { accountId, orgId, userId }, select: { id: true } });
+  const member = await platformPrisma.userOrgMembership.findFirst({ where: { accountId, orgId, userId }, select: { id: true } });
   if (!member) return res.status(404).json({ error: 'User not found in org' });
 
-  const owned = await prisma.roleProfile.findMany({
+  const owned = await platformPrisma.roleProfile.findMany({
     where: { id: { in: body.profileIds }, accountId, orgId },
     select: { id: true },
   });
@@ -156,7 +157,7 @@ governanceRouter.post('/orgs/:orgId/users/:userId/role-profiles', USERS_EDIT, as
     return res.status(400).json({ error: 'One or more profiles do not belong to this organisation' });
   }
 
-  await prisma.$transaction(async (tx) => {
+  await platformPrisma.$transaction(async (tx) => {
     await tx.userRoleProfile.deleteMany({ where: { accountId, orgId, userId } });
     for (const p of owned) {
       await tx.userRoleProfile.create({
@@ -192,7 +193,7 @@ governanceRouter.get('/orgs/:orgId/approval-rules', ROLES_VIEW, async (req, res)
     where: { accountId, orgId },
     orderBy: [{ docType: 'asc' }, { sequence: 'asc' }],
   });
-  const roles = await prisma.role.findMany({ where: { accountId, orgId }, select: { id: true, name: true } });
+  const roles = await platformPrisma.role.findMany({ where: { accountId, orgId }, select: { id: true, name: true } });
   const roleById = new Map(roles.map((r) => [r.id, r.name]));
 
   res.json({
@@ -214,7 +215,7 @@ governanceRouter.post('/orgs/:orgId/approval-rules', ROLES_EDIT, async (req, res
     return res.status(400).json({ error: 'Maximum must be greater than minimum' });
   }
 
-  const role = await prisma.role.findFirst({ where: { id: body.approverRoleId, accountId, orgId }, select: { id: true } });
+  const role = await platformPrisma.role.findFirst({ where: { id: body.approverRoleId, accountId, orgId }, select: { id: true } });
   if (!role) return res.status(400).json({ error: 'Approver role does not belong to this organisation' });
 
   const rule = await prisma.approvalRule.create({
@@ -356,7 +357,7 @@ const userPermissionSchema = z.object({
 governanceRouter.get('/orgs/:orgId/users/:userId/permissions', USERS_VIEW, async (req, res) => {
   if (!orgOk(req, res)) return;
   const { accountId, orgId } = req.tenant!;
-  const rows = await prisma.userPermission.findMany({
+  const rows = await platformPrisma.userPermission.findMany({
     where: { accountId, orgId, userId: String(req.params.userId) },
     orderBy: [{ entityType: 'asc' }, { createdAt: 'asc' }],
   });
@@ -369,11 +370,11 @@ governanceRouter.post('/orgs/:orgId/users/:userId/permissions', USERS_EDIT, asyn
   const userId = String(req.params.userId);
   const body = userPermissionSchema.parse(req.body);
 
-  const member = await prisma.userOrgMembership.findFirst({ where: { accountId, orgId, userId }, select: { id: true } });
+  const member = await platformPrisma.userOrgMembership.findFirst({ where: { accountId, orgId, userId }, select: { id: true } });
   if (!member) return res.status(404).json({ error: 'User not found in org' });
 
   try {
-    const row = await prisma.userPermission.create({
+    const row = await platformPrisma.userPermission.create({
       data: {
         accountId,
         orgId,
@@ -396,10 +397,10 @@ governanceRouter.post('/orgs/:orgId/users/:userId/permissions', USERS_EDIT, asyn
 governanceRouter.delete('/orgs/:orgId/users/:userId/permissions/:id', USERS_EDIT, async (req, res) => {
   if (!orgOk(req, res)) return;
   const { accountId, orgId } = req.tenant!;
-  const row = await prisma.userPermission.findFirst({
+  const row = await platformPrisma.userPermission.findFirst({
     where: { id: String(req.params.id), accountId, orgId, userId: String(req.params.userId) },
   });
   if (!row) return res.status(404).json({ error: 'Restriction not found' });
-  await prisma.userPermission.delete({ where: { id: row.id } });
+  await platformPrisma.userPermission.delete({ where: { id: row.id } });
   res.json({ ok: true });
 });

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * Plans and entitlements — the ceiling above the per-org feature settings.
@@ -44,12 +45,12 @@ const newOwner = async (): Promise<Ctx> => {
     .send({ companyName: `Ent Co ${Date.now()}-${rnd()}`, state: 'Karnataka' })
     .expect(200);
   const orgId = setup.body.company.orgId as string;
-  const org = await prisma.org.findUnique({ where: { id: orgId }, select: { accountId: true } });
+  const org = await platformPrisma.org.findUnique({ where: { id: orgId }, select: { accountId: true } });
   return { token: signup.body.token, accountId: org!.accountId, orgId, branchId: setup.body.branch.id };
 };
 
 const setPlan = (accountId: string, planKey: string, over: Record<string, unknown> = {}) =>
-  prisma.accountEntitlement.upsert({
+  platformPrisma.accountEntitlement.upsert({
     where: { accountId },
     update: { planKey, ...over },
     create: { accountId, planKey, ...over },

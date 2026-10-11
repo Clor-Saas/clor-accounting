@@ -188,6 +188,7 @@ export default async function setup() {
   const accounting = String(process.env.DATABASE_URL || '');
   const payroll = String(process.env.PAYROLL_DATABASE_URL || '');
   const people = String(process.env.PEOPLE_DATABASE_URL || '');
+  const platform = String(process.env.PLATFORM_DATABASE_URL || '');
 
   if (!accounting.startsWith('postgres')) {
     throw new Error(
@@ -205,7 +206,7 @@ export default async function setup() {
      which is the shape the product is deployed in. */
   const database = dbNameOf(accounting);
   const schemaOf = (url: string) => new URL(url).searchParams.get('schema') || 'public';
-  const schemas = [schemaOf(accounting), schemaOf(payroll), schemaOf(people)];
+  const schemas = [schemaOf(accounting), schemaOf(payroll), schemaOf(people), schemaOf(platform)];
 
   if (ownsDatabases) {
     await createDatabase(database);
@@ -225,10 +226,12 @@ export default async function setup() {
   push(null, { DATABASE_URL: asOwner(accounting) });
   push('prisma/payroll/schema.prisma', { PAYROLL_DATABASE_URL: asOwner(payroll) });
   push('prisma/people/schema.prisma', { PEOPLE_DATABASE_URL: asOwner(people) });
+  push('prisma/platform/schema.prisma', { PLATFORM_DATABASE_URL: asOwner(platform) });
 
   await applyPolicies(asOwner(accounting), 'prisma/migrations/20260924120000_row_level_security');
   await applyPolicies(asOwner(payroll), 'prisma/payroll/migrations/20260924120000_row_level_security');
   await applyPolicies(asOwner(people), 'prisma/people/migrations/20260924120000_row_level_security');
+  await applyPolicies(asOwner(platform), 'prisma/platform/migrations/20260924120000_row_level_security');
 
   await grantToAppRole(database, schemas);
 

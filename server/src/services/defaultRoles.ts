@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { ROLE_PRESETS, expandPreset, permKey } from '../constants/permissionCatalog.js';
 import { ensurePermissionCatalog } from '../routes/permissions.js';
 
@@ -23,7 +24,7 @@ const PRESET_ROLE_TYPE: Record<string, string> = {
 };
 
 export async function ensureDefaultRoles(accountId: string, orgId: string, userId: string) {
-  const existing = await prisma.role.findMany({
+  const existing = await platformPrisma.role.findMany({
     where: { accountId, orgId, branchId: null },
     select: { name: true },
   });
@@ -33,7 +34,7 @@ export async function ensureDefaultRoles(accountId: string, orgId: string, userI
   if (!missing.length) return;
 
   await ensurePermissionCatalog();
-  const permissions = await prisma.permission.findMany({
+  const permissions = await platformPrisma.permission.findMany({
     select: { id: true, module: true, subModule: true, action: true },
   });
   const idByKey = new Map(permissions.map((p) => [permKey(p.module, p.subModule, p.action), p.id]));
@@ -41,7 +42,7 @@ export async function ensureDefaultRoles(accountId: string, orgId: string, userI
   for (const [presetKey, preset] of missing) {
     const rows = expandPreset(presetKey);
     try {
-      await prisma.$transaction(async (tx) => {
+      await platformPrisma.$transaction(async (tx) => {
         const role = await tx.role.create({
           data: {
             accountId,

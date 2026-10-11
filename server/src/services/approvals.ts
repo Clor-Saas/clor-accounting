@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { resolveRoleIds } from './access.js';
 import { sendTemplate } from './mailer.js';
 
@@ -157,17 +158,17 @@ async function notifyApprovers(
   rule: { id: string; name: string; approverRoleId: string },
   opts: { accountId: string; orgId: string; userId: string; docType: string; docId: string; amount: number }
 ) {
-  const assignments = await prisma.userRoleAssignment.findMany({
+  const assignments = await platformPrisma.userRoleAssignment.findMany({
     where: { accountId: opts.accountId, orgId: opts.orgId, roleId: rule.approverRoleId },
     select: { userId: true },
   });
 
-  const profileRoles = await prisma.roleProfileRole.findMany({
+  const profileRoles = await platformPrisma.roleProfileRole.findMany({
     where: { accountId: opts.accountId, orgId: opts.orgId, roleId: rule.approverRoleId },
     select: { profileId: true },
   });
   const viaProfiles = profileRoles.length
-    ? await prisma.userRoleProfile.findMany({
+    ? await platformPrisma.userRoleProfile.findMany({
         where: {
           accountId: opts.accountId,
           orgId: opts.orgId,
@@ -183,9 +184,9 @@ async function notifyApprovers(
   if (!userIds.length) return;
 
   const [approvers, requester, org] = await Promise.all([
-    prisma.user.findMany({ where: { id: { in: userIds }, isActive: true }, select: { email: true, fullName: true } }),
-    prisma.user.findUnique({ where: { id: opts.userId }, select: { fullName: true } }),
-    prisma.org.findUnique({ where: { id: opts.orgId }, select: { name: true } }),
+    platformPrisma.user.findMany({ where: { id: { in: userIds }, isActive: true }, select: { email: true, fullName: true } }),
+    platformPrisma.user.findUnique({ where: { id: opts.userId }, select: { fullName: true } }),
+    platformPrisma.org.findUnique({ where: { id: opts.orgId }, select: { name: true } }),
   ]);
 
   const docNumber = await documentNumber(opts.docType, opts.docId);
@@ -231,8 +232,8 @@ export async function notifyDecision(opts: {
   comment?: string | null;
 }) {
   const [raiser, decider] = await Promise.all([
-    prisma.user.findUnique({ where: { id: opts.requestedByUserId }, select: { email: true, fullName: true } }),
-    prisma.user.findUnique({ where: { id: opts.deciderUserId }, select: { fullName: true } }),
+    platformPrisma.user.findUnique({ where: { id: opts.requestedByUserId }, select: { email: true, fullName: true } }),
+    platformPrisma.user.findUnique({ where: { id: opts.deciderUserId }, select: { fullName: true } }),
   ]);
   if (!raiser) return;
 

@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { companyLimitReason } from '../services/entitlements.js';
 import { suggestSlug } from '../services/slug.js';
 import { PermissionAction, RoleType } from '../constants/enums.js';
@@ -76,11 +77,11 @@ async function bootstrapOwnerRole(accountId: string, orgId: string, userId: stri
 
   const roleName = 'Owner';
   const role =
-    (await prisma.role.findFirst({
+    (await platformPrisma.role.findFirst({
       where: { accountId, orgId, branchId: null, name: roleName },
       select: { id: true },
     })) ||
-    (await prisma.role.create({
+    (await platformPrisma.role.create({
       data: {
         accountId,
         orgId,
@@ -94,14 +95,14 @@ async function bootstrapOwnerRole(accountId: string, orgId: string, userId: stri
     }));
 
   const wanted = new Set(expandPreset('ADMIN').map((r) => permKey(r.module, r.subModule, r.action)));
-  const permissions = await prisma.permission.findMany({
+  const permissions = await platformPrisma.permission.findMany({
     select: { id: true, module: true, subModule: true, action: true },
   });
 
   for (const p of permissions) {
     if (!wanted.has(permKey(p.module, p.subModule, p.action))) continue;
     try {
-      await prisma.rolePermission.create({
+      await platformPrisma.rolePermission.create({
         data: { accountId, orgId, roleId: role.id, permissionId: p.id, allowed: true },
         select: { id: true },
       });
@@ -111,7 +112,7 @@ async function bootstrapOwnerRole(accountId: string, orgId: string, userId: stri
   }
 
   try {
-    await prisma.userRoleAssignment.create({
+    await platformPrisma.userRoleAssignment.create({
       data: { accountId, orgId, branchId: null, userId, roleId: role.id, createdByUserId: userId },
       select: { id: true },
     });
@@ -136,7 +137,7 @@ authRouter.post('/login', loginLimiter, async (req: Request, res: Response) => {
   const ip = clientIp(req);
   const userAgent = req.headers['user-agent'] as string | undefined;
 
-  const user = await prisma.user.findFirst({
+  const user = await platformPrisma.user.findFirst({
     where: { OR: [{ email: identity }, { username: rawIdentity.trim() }] },
     select: {
       id: true,
@@ -213,7 +214,7 @@ authRouter.post('/login', loginLimiter, async (req: Request, res: Response) => {
    * company because the client needs to know which account a company belongs
    * to once they are not all the same.
    */
-  const memberships = await prisma.userOrgMembership.findMany({
+  const memberships = await platformPrisma.userOrgMembership.findMany({
     where: { userId: user.id },
     select: { orgId: true, accountId: true, org: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'asc' },
@@ -232,7 +233,7 @@ authRouter.post('/login', loginLimiter, async (req: Request, res: Response) => {
   const firstAccountId = companies[0]?.accountId ?? user.accountId;
 
   const branches = firstOrgId
-    ? await prisma.userBranchMembership.findMany({
+    ? await platformPrisma.userBranchMembership.findMany({
         where: { accountId: firstAccountId, orgId: firstOrgId, userId: user.id },
         select: { branchId: true },
         orderBy: { createdAt: 'asc' },
@@ -344,7 +345,7 @@ authRouter.get('/me', async (req: Request, res: Response) => {
 
   const activeOrgId = String(req.headers['x-org-id'] || '').trim();
 
-  const user = await prisma.user.findFirst({
+  const user = await platformPrisma.user.findFirst({
     where: { id: auth.userId, accountId: auth.accountId, isActive: true },
     select: {
       id: true,
@@ -363,7 +364,7 @@ authRouter.get('/me', async (req: Request, res: Response) => {
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
   /* Same rule as login: every company this person can open. */
-  const orgMemberships = await prisma.userOrgMembership.findMany({
+  const orgMemberships = await platformPrisma.userOrgMembership.findMany({
     where: { userId: auth.userId },
     select: {
       orgId: true,
@@ -403,7 +404,7 @@ authRouter.get('/me', async (req: Request, res: Response) => {
   const activeAccountId = activeMembership?.accountId || auth.accountId;
 
   if (activeOrgId) {
-    const assignments = await prisma.userRoleAssignment.findMany({
+    const assignments = await platformPrisma.userRoleAssignment.findMany({
       where: { accountId: activeAccountId, orgId: activeOrgId, userId: auth.userId },
       select: { role: { select: { roleType: true, name: true } } },
     });
@@ -415,14 +416,14 @@ authRouter.get('/me', async (req: Request, res: Response) => {
       assignments.some((a) => String(a?.role?.roleType || '') === RoleType.ADMIN);
 
     if (isOrgAdmin) {
-      const branches = await prisma.branch.findMany({
+      const branches = await platformPrisma.branch.findMany({
         where: { accountId: activeAccountId, orgId: activeOrgId },
         select: { id: true },
         orderBy: { branchName: 'asc' },
       });
       allowedBranchIds = branches.map((b) => b.id);
     } else {
-      const memberships = await prisma.userBranchMembership.findMany({
+      const memberships = await platformPrisma.userBranchMembership.findMany({
         where: { accountId: activeAccountId, orgId: activeOrgId, userId: auth.userId },
         select: { branchId: true },
         orderBy: { createdAt: 'asc' },
@@ -455,7 +456,7 @@ authRouter.get('/me', async (req: Request, res: Response) => {
    * The platform shell is the thing that owns tenant context, so the platform
    * answers it: one branch per company, the first the user is a member of.
    */
-  const branchMemberships = await prisma.userBranchMembership.findMany({
+  const branchMemberships = await platformPrisma.userBranchMembership.findMany({
     where: { userId: auth.userId, orgId: { in: orgMemberships.map((m) => m.orgId) } },
     select: { orgId: true, branchId: true },
     orderBy: { createdAt: 'asc' },
@@ -473,7 +474,7 @@ authRouter.get('/me', async (req: Request, res: Response) => {
    */
   const missing = orgMemberships.filter((m) => !defaultBranchByOrg[m.orgId]).map((m) => m.orgId);
   if (missing.length) {
-    const firstBranches = await prisma.branch.findMany({
+    const firstBranches = await platformPrisma.branch.findMany({
       where: { orgId: { in: missing } },
       select: { id: true, orgId: true },
       orderBy: { createdAt: 'asc' },
@@ -513,18 +514,18 @@ authRouter.post('/signup', signupLimiter, async (req: Request, res: Response) =>
     .parse(req.body);
 
   const email = body.email.trim().toLowerCase();
-  const existing = await prisma.user.findFirst({ where: { email }, select: { id: true } });
+  const existing = await platformPrisma.user.findFirst({ where: { email }, select: { id: true } });
   if (existing) return res.status(409).json({ error: 'User already exists. Please login.' });
 
   const rounds = Number(process.env.BCRYPT_ROUNDS || 12);
   const passwordHash = await bcrypt.hash(body.password, rounds);
 
-  const account = await prisma.account.create({
+  const account = await platformPrisma.account.create({
     data: { name: body.name.trim() || email },
     select: { id: true, name: true },
   });
 
-  const user = await prisma.user.create({
+  const user = await platformPrisma.user.create({
     data: {
       accountId: account.id,
       email,
@@ -656,7 +657,7 @@ authRouter.post('/setup-company', async (req: Request, res: Response) => {
     gstin: gstin || null,
   });
 
-  const org = await prisma.org.create({
+  const org = await platformPrisma.org.create({
     data: {
       accountId: auth.accountId,
       name: body.companyName.trim(),
@@ -668,7 +669,7 @@ authRouter.post('/setup-company', async (req: Request, res: Response) => {
     select: { id: true, name: true, slug: true },
   });
 
-  const branch = await prisma.branch.create({
+  const branch = await platformPrisma.branch.create({
     data: {
       accountId: auth.accountId,
       orgId: org.id,
@@ -690,11 +691,11 @@ authRouter.post('/setup-company', async (req: Request, res: Response) => {
     select: { id: true },
   });
 
-  await prisma.userOrgMembership.create({
+  await platformPrisma.userOrgMembership.create({
     data: { accountId: auth.accountId, orgId: org.id, userId: auth.userId },
   });
 
-  await prisma.userBranchMembership.create({
+  await platformPrisma.userBranchMembership.create({
     data: { accountId: auth.accountId, orgId: org.id, branchId: branch.id, userId: auth.userId },
   });
 
@@ -720,7 +721,7 @@ authRouter.post('/setup-company', async (req: Request, res: Response) => {
     },
   });
 
-  await prisma.userWarehouseAccess.create({
+  await platformPrisma.userWarehouseAccess.create({
     data: {
       accountId: auth.accountId,
       orgId: org.id,
@@ -749,7 +750,7 @@ authRouter.post('/forgot-password', resetLimiter, async (req: Request, res: Resp
   const email = body.email.trim().toLowerCase();
   const ip = clientIp(req);
 
-  const user = await prisma.user.findFirst({
+  const user = await platformPrisma.user.findFirst({
     where: { email },
     select: { id: true, accountId: true, isActive: true },
   });
@@ -802,7 +803,7 @@ authRouter.post('/reset-password', resetLimiter, async (req: Request, res: Respo
   const rounds = Number(process.env.BCRYPT_ROUNDS || 12);
   const passwordHash = await bcrypt.hash(body.password, rounds);
 
-  await prisma.user.update({
+  await platformPrisma.user.update({
     where: { id: record.userId },
     data: { passwordHash, failedLoginCount: 0, lockedUntil: null },
   });
@@ -849,7 +850,7 @@ authRouter.post('/resend-verification', resetLimiter, async (req: Request, res: 
     return res.status(401).json({ error: String(e?.message || 'Unauthorized') });
   }
 
-  const user = await prisma.user.findFirst({
+  const user = await platformPrisma.user.findFirst({
     where: { id: auth.userId, accountId: auth.accountId },
     select: { id: true, accountId: true, email: true, fullName: true, emailVerifiedAt: true },
   });
@@ -926,7 +927,7 @@ authRouter.patch('/me', async (req: Request, res: Response) => {
     if (next) {
       // Usernames are a login credential, so a collision has to be refused
       // rather than left for the unique index to turn into a 500.
-      const taken = await prisma.user.findFirst({
+      const taken = await platformPrisma.user.findFirst({
         where: { username: next, NOT: { id: auth.userId } },
         select: { id: true },
       });
@@ -942,7 +943,7 @@ authRouter.patch('/me', async (req: Request, res: Response) => {
     body.lastName !== undefined ? body.lastName.trim() : undefined,
   ];
   if (composed.some((v) => v !== undefined)) {
-    const existing = await prisma.user.findUnique({
+    const existing = await platformPrisma.user.findUnique({
       where: { id: auth.userId },
       select: { firstName: true, lastName: true, fullName: true },
     });
@@ -955,7 +956,7 @@ authRouter.patch('/me', async (req: Request, res: Response) => {
 
   if (!Object.keys(data).length) return res.status(400).json({ error: 'Nothing to update.' });
 
-  const user = await prisma.user.update({
+  const user = await platformPrisma.user.update({
     where: { id: auth.userId },
     data,
     select: {

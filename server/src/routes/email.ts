@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -62,7 +63,7 @@ const publicSettings = (row: any) =>
 
 emailRouter.get('/orgs/:orgId/email/settings', SETTINGS_VIEW, async (req, res) => {
   if (!orgOk(req, res)) return;
-  const row = await prisma.emailSetting.findUnique({ where: { orgId: req.tenant!.orgId } });
+  const row = await platformPrisma.emailSetting.findUnique({ where: { orgId: req.tenant!.orgId } });
   res.json({ settings: publicSettings(row) });
 });
 
@@ -75,7 +76,7 @@ emailRouter.put('/orgs/:orgId/email/settings', SETTINGS_EDIT, async (req, res) =
     return res.status(400).json({ error: 'Host and port are required for an SMTP server' });
   }
 
-  const existing = await prisma.emailSetting.findUnique({ where: { orgId } });
+  const existing = await platformPrisma.emailSetting.findUnique({ where: { orgId } });
 
   const passwordEnc =
     body.password === undefined
@@ -100,8 +101,8 @@ emailRouter.put('/orgs/:orgId/email/settings', SETTINGS_EDIT, async (req, res) =
   };
 
   const saved = existing
-    ? await prisma.emailSetting.update({ where: { orgId }, data })
-    : await prisma.emailSetting.create({ data });
+    ? await platformPrisma.emailSetting.update({ where: { orgId }, data })
+    : await platformPrisma.emailSetting.create({ data });
 
   res.json({ settings: publicSettings(saved) });
 });
@@ -113,7 +114,7 @@ emailRouter.post('/orgs/:orgId/email/test-connection', SETTINGS_EDIT, async (req
   if (body.provider !== 'SMTP') return res.json({ ok: true, note: 'Using the platform mail server' });
   if (!body.host || !body.port) return res.status(400).json({ error: 'Host and port are required' });
 
-  const existing = await prisma.emailSetting.findUnique({ where: { orgId: req.tenant!.orgId } });
+  const existing = await platformPrisma.emailSetting.findUnique({ where: { orgId: req.tenant!.orgId } });
   const password =
     body.password !== undefined
       ? body.password
@@ -129,14 +130,14 @@ emailRouter.post('/orgs/:orgId/email/test-connection', SETTINGS_EDIT, async (req
       username: body.username ?? null,
       password: password ?? '',
     });
-    await prisma.emailSetting.updateMany({
+    await platformPrisma.emailSetting.updateMany({
       where: { orgId: req.tenant!.orgId },
       data: { verifiedAt: new Date(), lastError: null },
     });
     res.json({ ok: true });
   } catch (e: any) {
     const message = String(e?.message || e).slice(0, 300);
-    await prisma.emailSetting.updateMany({
+    await platformPrisma.emailSetting.updateMany({
       where: { orgId: req.tenant!.orgId },
       data: { lastError: message },
     });
@@ -149,7 +150,7 @@ emailRouter.post('/orgs/:orgId/email/send-test', SETTINGS_EDIT, async (req, res)
   if (!orgOk(req, res)) return;
   const { accountId, orgId } = req.tenant!;
 
-  const user = await prisma.user.findUnique({
+  const user = await platformPrisma.user.findUnique({
     where: { id: req.auth!.userId },
     select: { email: true, fullName: true },
   });
@@ -174,7 +175,7 @@ emailRouter.post('/orgs/:orgId/email/send-test', SETTINGS_EDIT, async (req, res)
 
 emailRouter.get('/orgs/:orgId/notifications', SETTINGS_VIEW, async (req, res) => {
   if (!orgOk(req, res)) return;
-  const rows = await prisma.notificationSetting.findMany({ where: { orgId: req.tenant!.orgId } });
+  const rows = await platformPrisma.notificationSetting.findMany({ where: { orgId: req.tenant!.orgId } });
   const byKey = new Map(rows.map((r) => [r.eventKey, r]));
 
   res.json({
@@ -214,7 +215,7 @@ emailRouter.put('/orgs/:orgId/notifications', SETTINGS_EDIT, async (req, res) =>
   }
 
   for (const e of body.events) {
-    await prisma.notificationSetting.upsert({
+    await platformPrisma.notificationSetting.upsert({
       where: { orgId_eventKey: { orgId, eventKey: e.eventKey } },
       update: {
         enabled: e.enabled,
@@ -241,7 +242,7 @@ emailRouter.put('/orgs/:orgId/notifications', SETTINGS_EDIT, async (req, res) =>
 
 emailRouter.get('/orgs/:orgId/email/outbox', SETTINGS_VIEW, async (req, res) => {
   if (!orgOk(req, res)) return;
-  const rows = await prisma.emailOutbox.findMany({
+  const rows = await platformPrisma.emailOutbox.findMany({
     where: {
       orgId: req.tenant!.orgId,
       ...(req.query.status ? { status: String(req.query.status) } : {}),

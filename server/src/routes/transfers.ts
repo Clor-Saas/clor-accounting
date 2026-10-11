@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import type { Prisma } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
@@ -26,12 +27,12 @@ const createTransferSchema = z.object({
 });
 
 async function ensureUserHasBranch(accountId: string, orgId: string, userId: string, branchId: string) {
-  const m = await prisma.userBranchMembership.findFirst({ where: { accountId, orgId, userId, branchId } });
+  const m = await platformPrisma.userBranchMembership.findFirst({ where: { accountId, orgId, userId, branchId } });
   return Boolean(m);
 }
 
 async function ensureUserHasWarehouse(accountId: string, orgId: string, userId: string, warehouseId: string) {
-  const m = await prisma.userWarehouseAccess.findFirst({ where: { accountId, orgId, userId, warehouseId } });
+  const m = await platformPrisma.userWarehouseAccess.findFirst({ where: { accountId, orgId, userId, warehouseId } });
   return Boolean(m);
 }
 
@@ -75,8 +76,8 @@ transfersRouter.post('/orgs/:orgId/transfers', requirePermission('INVENTORY', Pe
   if (!okWh) return res.status(403).json({ error: 'No access to source warehouse' });
 
   const [src, dst, srcWh, dstWh] = await Promise.all([
-    prisma.branch.findFirst({ where: { accountId, orgId, id: body.sourceBranchId } }),
-    prisma.branch.findFirst({ where: { accountId, orgId, id: body.targetBranchId } }),
+    platformPrisma.branch.findFirst({ where: { accountId, orgId, id: body.sourceBranchId } }),
+    platformPrisma.branch.findFirst({ where: { accountId, orgId, id: body.targetBranchId } }),
     prisma.warehouse.findFirst({ where: { accountId, orgId, id: body.sourceWarehouseId, branchId: body.sourceBranchId } }),
     prisma.warehouse.findFirst({ where: { accountId, orgId, id: body.targetWarehouseId, branchId: body.targetBranchId } }),
   ]);

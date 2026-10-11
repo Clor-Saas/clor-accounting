@@ -57,6 +57,7 @@ vi.mock('../services/settlement.js', async (importOriginal) => {
 
 const { buildApp } = await import('../app.js');
 const { prisma } = await import('../utils/prisma.js');
+const { platformPrisma } = await import('../utils/platformPrisma.js');
 
 const app = buildApp().listen(0);
 afterAll(() => new Promise((done) => app.close(done)));
@@ -87,8 +88,8 @@ async function makeOwner(prefix: string): Promise<Ctx> {
     .set('Authorization', `Bearer ${signup.body.token}`)
     .send({ companyName: `Till Co ${Date.now()}-${rnd()}`, state: 'Karnataka' })
     .expect(200);
-  const org = await prisma.org.findUnique({ where: { id: setup.body.company.orgId }, select: { accountId: true } });
-  const user = await prisma.user.findFirst({ where: { email }, select: { id: true } });
+  const org = await platformPrisma.org.findUnique({ where: { id: setup.body.company.orgId }, select: { accountId: true } });
+  const user = await platformPrisma.user.findFirst({ where: { email }, select: { id: true } });
   return {
     token: signup.body.token,
     orgId: setup.body.company.orgId,

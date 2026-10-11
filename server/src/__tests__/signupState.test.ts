@@ -2,6 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * The state a business registers in, captured at signup.
@@ -40,7 +41,7 @@ describe('setup-company captures where the business is', () => {
     const token = await newOwner();
     const res = await setup(token, { companyName: `Maha Co ${Date.now()}-${rnd()}`, state: 'Maharashtra' }).expect(200);
 
-    const branch = await prisma.branch.findUnique({
+    const branch = await platformPrisma.branch.findUnique({
       where: { id: res.body.branch.id },
       select: { state: true, gstin: true, gstRegistrationType: true },
     });
@@ -85,7 +86,7 @@ describe('setup-company captures where the business is', () => {
       gstin: '29AABCU9603R1ZJ',
     }).expect(200);
 
-    const branch = await prisma.branch.findUnique({
+    const branch = await platformPrisma.branch.findUnique({
       where: { id: res.body.branch.id },
       select: { state: true, gstin: true, gstRegistrationType: true },
     });
@@ -126,7 +127,7 @@ describe('the company master survives signup', () => {
       },
     }).expect(200);
 
-    const org = await prisma.org.findUnique({
+    const org = await platformPrisma.org.findUnique({
       where: { id: res.body.company.orgId },
       select: { profileJson: true },
     });

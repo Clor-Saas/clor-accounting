@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -91,7 +92,7 @@ dataExportRouter.get('/orgs/:orgId/export', EXPORT, async (req, res) => {
     return res.status(400).json({ error: "scope must be 'data', 'configuration' or 'all'" });
   }
 
-  const org = await prisma.org.findFirst({
+  const org = await platformPrisma.org.findFirst({
     where: { id: orgId, accountId },
     select: { id: true, name: true, slug: true, profileJson: true },
   });
@@ -162,17 +163,17 @@ dataExportRouter.get('/orgs/:orgId/export', EXPORT, async (req, res) => {
       roles, rolePermissions, featureSettings, approvalRules,
       fiscalYears, emailSettings, einvoiceSettings, recurring,
     ] = await Promise.all([
-      prisma.branch.findMany({ where: scope }),
+      platformPrisma.branch.findMany({ where: scope }),
       prisma.warehouse.findMany({ where: scope }),
       prisma.ledgerAccount.findMany({ where: scope }),
       prisma.orgMaster.findMany({ where: scope }),
       prisma.numberSeries.findMany({ where: scope }),
-      prisma.role.findMany({ where: scope }),
-      prisma.rolePermission.findMany({ where: scope, include: { permission: true } }),
-      prisma.featureSetting.findMany({ where: scope }),
+      platformPrisma.role.findMany({ where: scope }),
+      platformPrisma.rolePermission.findMany({ where: scope, include: { permission: true } }),
+      platformPrisma.featureSetting.findMany({ where: scope }),
       prisma.approvalRule.findMany({ where: scope }),
       prisma.fiscalYear.findMany({ where: scope }),
-      prisma.emailSetting.findMany({ where: scope }),
+      platformPrisma.emailSetting.findMany({ where: scope }),
       prisma.eInvoiceSetting.findMany({ where: scope }),
       prisma.recurringSchedule.findMany({ where: scope }),
     ]);

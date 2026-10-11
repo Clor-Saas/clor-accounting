@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * The public handle for a company: the `agc` in `agc.books.clor.in`.
@@ -75,7 +76,7 @@ export async function suggestSlug(name: string): Promise<string> {
   for (let n = 0; n < 50; n += 1) {
     const candidate = n === 0 ? seed : `${seed}-${n + 1}`.slice(0, SLUG_MAX);
     if (slugProblem(candidate)) continue;
-    const taken = await prisma.org.findFirst({ where: { slug: candidate }, select: { id: true } });
+    const taken = await platformPrisma.org.findFirst({ where: { slug: candidate }, select: { id: true } });
     if (!taken) return candidate;
   }
   // Every reasonable derivation was taken; fall back to something certainly free.
@@ -89,7 +90,7 @@ export async function suggestSlug(name: string): Promise<string> {
 export async function slugUnavailableReason(slug: string, exceptOrgId?: string): Promise<string | null> {
   const problem = slugProblem(slug);
   if (problem) return problem;
-  const taken = await prisma.org.findFirst({ where: { slug }, select: { id: true } });
+  const taken = await platformPrisma.org.findFirst({ where: { slug }, select: { id: true } });
   if (taken && taken.id !== exceptOrgId) return 'That name is already taken.';
   return null;
 }

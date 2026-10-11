@@ -31,6 +31,7 @@ import request from 'supertest';
 
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /* ------------------------------------------------------------------ guard */
 
@@ -208,7 +209,7 @@ const run = async () => {
      * still goes through HTTP, which is the part that matters.
      */
     if (!branchId) {
-      const first = await prisma.branch.findFirst({ where: { orgId }, orderBy: { createdAt: 'asc' }, select: { id: true } });
+      const first = await platformPrisma.branch.findFirst({ where: { orgId }, orderBy: { createdAt: 'asc' }, select: { id: true } });
       branchId = String(first?.id || '');
       if (!branchId) throw new Error('no branch found for the QA organisation');
     }

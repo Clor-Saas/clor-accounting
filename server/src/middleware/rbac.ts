@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { type PermissionAction as PermissionActionType } from '../constants/enums.js';
 import { flattenCatalog } from '../constants/permissionCatalog.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { resolveAccess } from '../services/access.js';
 
 // DB-stored RBAC:
@@ -20,14 +21,14 @@ function permString(module: string, subModule: string | null, action: Permission
 }
 
 async function bootstrapOwnerRoleIfCreator(accountId: string, orgId: string, userId: string) {
-  const org = await prisma.org.findFirst({ where: { accountId, id: orgId }, select: { createdByUserId: true } });
+  const org = await platformPrisma.org.findFirst({ where: { accountId, id: orgId }, select: { createdByUserId: true } });
   if (!org || org.createdByUserId !== userId) return false;
 
   // Create a minimal owner role so the creator can proceed.
   const roleName = 'Owner';
   const role =
-    (await prisma.role.findFirst({ where: { accountId, orgId, branchId: null, name: roleName }, select: { id: true } })) ||
-    (await prisma.role.create({
+    (await platformPrisma.role.findFirst({ where: { accountId, orgId, branchId: null, name: roleName }, select: { id: true } })) ||
+    (await platformPrisma.role.create({
       data: {
         accountId,
         orgId,
@@ -49,18 +50,18 @@ async function bootstrapOwnerRoleIfCreator(accountId: string, orgId: string, use
 
   const permissionIds: string[] = [];
   for (const p of core) {
-    const existing = await prisma.permission.findFirst({ where: { module: p.module, subModule: p.subModule, action: p.action }, select: { id: true } });
+    const existing = await platformPrisma.permission.findFirst({ where: { module: p.module, subModule: p.subModule, action: p.action }, select: { id: true } });
     if (existing) {
       permissionIds.push(existing.id);
       continue;
     }
-    const created = await prisma.permission.create({ data: { module: p.module, subModule: p.subModule, action: p.action }, select: { id: true } });
+    const created = await platformPrisma.permission.create({ data: { module: p.module, subModule: p.subModule, action: p.action }, select: { id: true } });
     permissionIds.push(created.id);
   }
 
   for (const permissionId of permissionIds) {
     try {
-      await prisma.rolePermission.create({
+      await platformPrisma.rolePermission.create({
         data: { accountId, orgId, roleId: role.id, permissionId, allowed: true },
         select: { id: true },
       });
@@ -71,7 +72,7 @@ async function bootstrapOwnerRoleIfCreator(accountId: string, orgId: string, use
   }
 
   try {
-    await prisma.userRoleAssignment.create({
+    await platformPrisma.userRoleAssignment.create({
       data: { accountId, orgId, branchId: null, userId, roleId: role.id, createdByUserId: userId },
       select: { id: true },
     });

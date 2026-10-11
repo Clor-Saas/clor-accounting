@@ -12,6 +12,7 @@ import request from 'supertest';
 
 const { buildApp } = await import('../app.js');
 const { prisma } = await import('../utils/prisma.js');
+const { platformPrisma } = await import('../utils/platformPrisma.js');
 const { payrollPrisma } = await import('../utils/payrollPrisma.js');
 const { peoplePrisma } = await import('../utils/peoplePrisma.js');
 
@@ -41,7 +42,7 @@ async function makeOwner(): Promise<Ctx> {
     .set('Authorization', `Bearer ${signup.body.token}`)
     .send({ companyName: `Pay Co ${Date.now()}-${rnd()}`, state: 'Karnataka' })
     .expect(200);
-  const org = await prisma.org.findUnique({ where: { id: setup.body.company.orgId }, select: { accountId: true } });
+  const org = await platformPrisma.org.findUnique({ where: { id: setup.body.company.orgId }, select: { accountId: true } });
   const ctx = { token: signup.body.token, orgId: setup.body.company.orgId, branchId: setup.body.branch.id, accountId: org!.accountId };
   await request(app).put(`/api/orgs/${ctx.orgId}/features`).set(at(ctx)).send({ features: { payroll: true } }).expect(200);
   return ctx;

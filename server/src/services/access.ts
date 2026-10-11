@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { permKey } from '../constants/permissionCatalog.js';
 import { RoleType } from '../constants/enums.js';
 
@@ -28,7 +29,7 @@ export type EffectiveAccess = {
 
 /** Role ids from direct assignments plus every role inside assigned profiles. */
 export async function resolveRoleIds(accountId: string, orgId: string, userId: string, branchId?: string) {
-  const direct = await prisma.userRoleAssignment.findMany({
+  const direct = await platformPrisma.userRoleAssignment.findMany({
     where: {
       accountId,
       orgId,
@@ -38,7 +39,7 @@ export async function resolveRoleIds(accountId: string, orgId: string, userId: s
     select: { roleId: true },
   });
 
-  const profileAssignments = await prisma.userRoleProfile.findMany({
+  const profileAssignments = await platformPrisma.userRoleProfile.findMany({
     where: {
       accountId,
       orgId,
@@ -50,7 +51,7 @@ export async function resolveRoleIds(accountId: string, orgId: string, userId: s
 
   let fromProfiles: Array<{ roleId: string }> = [];
   if (profileAssignments.length) {
-    fromProfiles = await prisma.roleProfileRole.findMany({
+    fromProfiles = await platformPrisma.roleProfileRole.findMany({
       where: { accountId, orgId, profileId: { in: profileAssignments.map((p) => p.profileId) } },
       select: { roleId: true },
     });
@@ -71,7 +72,7 @@ export async function resolveAccess(
     return { roleIds, permissions: new Set(), levels: new Map() };
   }
 
-  const rows = await prisma.rolePermission.findMany({
+  const rows = await platformPrisma.rolePermission.findMany({
     where: { roleId: { in: roleIds }, allowed: true },
     select: {
       permLevel: true,
@@ -96,7 +97,7 @@ export async function resolveAccess(
    * to type. Restricted roles are unaffected: they keep exactly the level they
    * were granted.
    */
-  const adminRoles = await prisma.role.count({
+  const adminRoles = await platformPrisma.role.count({
     where: { id: { in: roleIds }, roleType: RoleType.ADMIN },
   });
   const isAdmin = adminRoles > 0;
@@ -157,7 +158,7 @@ export function filterFieldsByLevel<T extends Record<string, any>>(
 
 /** Document-level restrictions for a user, keyed by entity type. */
 export async function resolveUserPermissions(accountId: string, orgId: string, userId: string) {
-  const rows = await prisma.userPermission.findMany({
+  const rows = await platformPrisma.userPermission.findMany({
     where: { accountId, orgId, userId },
     select: { entityType: true, entityId: true },
   });

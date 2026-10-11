@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * Which companies one person can work in.
@@ -157,7 +158,7 @@ describe("a person's company access", () => {
      * perfectly real — a row that lets somebody walk into a company nobody
      * invited them to. The row is the thing that must not exist.
      */
-    const leaked = await prisma.userOrgMembership.findFirst({
+    const leaked = await platformPrisma.userOrgMembership.findFirst({
       where: { userId: staffId, orgId: stranger.orgId },
       select: { id: true },
     });

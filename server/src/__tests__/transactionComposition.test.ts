@@ -3,6 +3,7 @@ import request from 'supertest';
 import { Prisma } from '@prisma/client';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { postEntry, reverseEntry, ensureLedgerSetup } from '../services/ledger.js';
 import { recalcSettlementForPayment } from '../services/settlement.js';
 
@@ -54,9 +55,9 @@ beforeAll(async () => {
     branchId: setup.body.branch.id,
     accountId: '',
   };
-  const org = await prisma.org.findUnique({ where: { id: owner.orgId }, select: { accountId: true } });
+  const org = await platformPrisma.org.findUnique({ where: { id: owner.orgId }, select: { accountId: true } });
   owner.accountId = org!.accountId;
-  const user = await prisma.user.findFirst({ where: { email }, select: { id: true } });
+  const user = await platformPrisma.user.findFirst({ where: { email }, select: { id: true } });
   userId = user!.id;
 
   await ensureLedgerSetup(owner.accountId, owner.orgId, userId);
@@ -495,7 +496,7 @@ describe('payment source keys are unique per organisation', () => {
       .set('Authorization', `Bearer ${other.body.token}`)
       .send({ companyName: `Other Co ${Date.now()}-${rnd()}`, state: 'Karnataka' })
       .expect(200);
-    const otherOrg = await prisma.org.findUnique({
+    const otherOrg = await platformPrisma.org.findUnique({
       where: { id: otherSetup.body.company.orgId },
       select: { accountId: true, id: true },
     });

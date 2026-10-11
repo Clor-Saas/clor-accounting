@@ -91,6 +91,7 @@ async function main() {
   process.env.DATABASE_URL = url;
 
   const { prisma } = await import('../utils/prisma.js');
+const { platformPrisma } = await import('../utils/platformPrisma.js');
   const { settlementDiscrepancies, recalcDocumentSettlement } = await import('../services/settlement.js');
 
   const apply = flag('apply');
@@ -107,7 +108,7 @@ async function main() {
     journalEntries: await prisma.journalEntry.count(),
     journalLines: await prisma.journalLine.count(),
   };
-  const orgs = await prisma.org.findMany({ select: { id: true, name: true }, take: 5 });
+  const orgs = await platformPrisma.org.findMany({ select: { id: true, name: true }, take: 5 });
 
   console.log('');
   console.log('Settlement reconciliation');

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { validateGstinOrThrow } from '../utils/gstin.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
@@ -41,7 +42,7 @@ branchesRouter.get('/orgs/:orgId/branches', async (req, res) => {
 
   if (orgId !== req.tenant!.orgId) return res.status(403).json({ error: 'orgId mismatch' });
 
-  const rows = await prisma.branch.findMany({
+  const rows = await platformPrisma.branch.findMany({
     where: { accountId, orgId },
     orderBy: [{ branchCode: 'asc' }],
   });
@@ -74,7 +75,7 @@ branchesRouter.post('/orgs/:orgId/branches', requirePermission('MASTERS', Permis
    * Both writes or neither: a branch with no membership is the broken state
    * this is fixing, so it must not be reachable by a half-failed create.
    */
-  const created = await prisma.$transaction(async (tx) => {
+  const created = await platformPrisma.$transaction(async (tx) => {
     const branch = await tx.branch.create({
     data: {
       accountId,
@@ -117,7 +118,7 @@ branchesRouter.patch('/orgs/:orgId/branches/:branchId', requirePermission('MASTE
 
   const body = branchSchema.partial().parse(req.body);
 
-  const existing = await prisma.branch.findFirst({
+  const existing = await platformPrisma.branch.findFirst({
     where: { accountId, orgId, id: branchId },
   });
   if (!existing) return res.status(404).json({ error: 'Branch not found' });
@@ -130,7 +131,7 @@ branchesRouter.patch('/orgs/:orgId/branches/:branchId', requirePermission('MASTE
     validateGstinOrThrow(String(nextGstin || ''), nextState);
   }
 
-  const updated = await prisma.branch.update({
+  const updated = await platformPrisma.branch.update({
     where: { id: branchId },
     data: {
       ...('branchCode' in body ? { branchCode: body.branchCode } : {}),
@@ -162,9 +163,9 @@ branchesRouter.delete('/orgs/:orgId/branches/:branchId', requirePermission('MAST
 
   if (orgId !== req.tenant!.orgId) return res.status(403).json({ error: 'orgId mismatch' });
 
-  const existing = await prisma.branch.findFirst({ where: { accountId, orgId, id: branchId } });
+  const existing = await platformPrisma.branch.findFirst({ where: { accountId, orgId, id: branchId } });
   if (!existing) return res.status(404).json({ error: 'Branch not found' });
 
-  await prisma.branch.delete({ where: { id: branchId } });
+  await platformPrisma.branch.delete({ where: { id: branchId } });
   res.json({ ok: true });
 });

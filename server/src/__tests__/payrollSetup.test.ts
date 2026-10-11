@@ -139,7 +139,8 @@ describe('each step turns on when the thing it asks for exists', () => {
 
     const { ensureLedgerSetup } = await import('../services/ledger.js');
     const { prisma } = await import('../utils/prisma.js');
-    const org = await prisma.org.findUnique({ where: { id: c.orgId }, select: { accountId: true } });
+const { platformPrisma } = await import('../utils/platformPrisma.js');
+    const org = await platformPrisma.org.findUnique({ where: { id: c.orgId }, select: { accountId: true } });
     await ensureLedgerSetup(org!.accountId, c.orgId, 'test');
     const expense = await prisma.ledgerAccount.findFirst({
       where: { accountId: org!.accountId, orgId: c.orgId, controlKind: 'EXPENSES' },
@@ -210,7 +211,8 @@ describe('ready to run', () => {
 
     const { ensureLedgerSetup } = await import('../services/ledger.js');
     const { prisma } = await import('../utils/prisma.js');
-    const org = await prisma.org.findUnique({ where: { id: c.orgId }, select: { accountId: true } });
+    const { platformPrisma } = await import('../utils/platformPrisma.js');
+    const org = await platformPrisma.org.findUnique({ where: { id: c.orgId }, select: { accountId: true } });
     await ensureLedgerSetup(org!.accountId, c.orgId, 'test');
     const expense = await prisma.ledgerAccount.findFirst({
       where: { accountId: org!.accountId, orgId: c.orgId, controlKind: 'EXPENSES' },

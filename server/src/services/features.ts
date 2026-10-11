@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { FEATURE_CATALOG, resolveFeatures } from '../constants/featureCatalog.js';
 import { entitlementFor, upgradeHintFor } from './entitlements.js';
 
@@ -9,7 +10,7 @@ import { entitlementFor, upgradeHintFor } from './entitlements.js';
  * served to the client so navigation and forms hide the same things.
  */
 export async function getFeatures(accountId: string, orgId: string) {
-  const rows = await prisma.featureSetting.findMany({
+  const rows = await platformPrisma.featureSetting.findMany({
     where: { accountId, orgId },
     select: { key: true, enabled: true },
   });

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { round2 } from '../utils/money.js';
 
 /**
@@ -35,7 +36,7 @@ export const isBase = (currency: string, baseCurrency: string) =>
 export { round2 };
 
 export async function baseCurrencyFor(accountId: string, orgId: string) {
-  const org = await prisma.org.findFirst({ where: { id: orgId, accountId }, select: { baseCurrency: true } });
+  const org = await platformPrisma.org.findFirst({ where: { id: orgId, accountId }, select: { baseCurrency: true } });
   return String(org?.baseCurrency || 'INR').toUpperCase();
 }
 

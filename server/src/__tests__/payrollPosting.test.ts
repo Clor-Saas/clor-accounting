@@ -18,6 +18,7 @@ import request from 'supertest';
 
 const { buildApp } = await import('../app.js');
 const { prisma } = await import('../utils/prisma.js');
+const { platformPrisma } = await import('../utils/platformPrisma.js');
 const { payrollPrisma } = await import('../utils/payrollPrisma.js');
 const { PAYROLL_SOURCE_DOC_TYPE, postPayrollRun, PayrollPostingError } = await import('../services/payroll/posting.js');
 const { accountingFor } = await import('../services/payroll/accounting/client.js');
@@ -62,7 +63,7 @@ async function makeOwner(): Promise<Ctx> {
     accountId: '',
   };
   await request(app).put(`/api/orgs/${ctx.orgId}/features`).set(at(ctx)).send({ features: { payroll: true } }).expect(200);
-  const org = await prisma.org.findUnique({ where: { id: ctx.orgId }, select: { accountId: true } });
+  const org = await platformPrisma.org.findUnique({ where: { id: ctx.orgId }, select: { accountId: true } });
   ctx.accountId = org!.accountId;
   /* The chart of accounts is created lazily; a ledger call brings it into being. */
   await request(app).get(`/api/orgs/${ctx.orgId}/ledger/accounts`).set(at(ctx)).expect(200);
@@ -468,7 +469,7 @@ describe('the boundary still holds', () => {
       accountId: c3.accountId,
       orgId: c3.orgId,
       branchId: c3.branchId,
-      userId: (await prisma.user.findFirstOrThrow({ where: { accountId: c3.accountId } })).id,
+      userId: (await platformPrisma.user.findFirstOrThrow({ where: { accountId: c3.accountId } })).id,
       runId: id,
       accounting: held,
     });
@@ -481,7 +482,7 @@ describe('the boundary still holds', () => {
         accountId: c3.accountId,
         orgId: c3.orgId,
         branchId: c3.branchId,
-        userId: (await prisma.user.findFirstOrThrow({ where: { accountId: c3.accountId } })).id,
+        userId: (await platformPrisma.user.findFirstOrThrow({ where: { accountId: c3.accountId } })).id,
         runId: id,
       })
     ).rejects.toThrow(PayrollPostingError);

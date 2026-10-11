@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { FEATURE_CATALOG } from '../constants/featureCatalog.js';
 import { DEFAULT_PLAN_KEY, lowestPlanWith, planFor } from '../constants/planCatalog.js';
 
@@ -29,7 +30,7 @@ export type Entitlement = {
 const ALL_KEYS = FEATURE_CATALOG.map((f) => f.key);
 
 export async function entitlementFor(accountId: string): Promise<Entitlement> {
-  const row = await prisma.accountEntitlement.findUnique({ where: { accountId } });
+  const row = await platformPrisma.accountEntitlement.findUnique({ where: { accountId } });
   const plan = planFor(row?.planKey ?? DEFAULT_PLAN_KEY);
 
   const status = String(row?.status || 'ACTIVE');
@@ -89,7 +90,7 @@ export function upgradeHintFor(key: string): string | null {
 export async function companyLimitReason(accountId: string): Promise<string | null> {
   const e = await entitlementFor(accountId);
   if (e.limits.maxCompanies == null) return null;
-  const count = await prisma.org.count({ where: { accountId } });
+  const count = await platformPrisma.org.count({ where: { accountId } });
   if (count < e.limits.maxCompanies) return null;
   return `The ${e.planName} plan includes ${e.limits.maxCompanies} ${
     e.limits.maxCompanies === 1 ? 'company' : 'companies'
@@ -100,7 +101,7 @@ export async function companyLimitReason(accountId: string): Promise<string | nu
 export async function userLimitReason(accountId: string): Promise<string | null> {
   const e = await entitlementFor(accountId);
   if (e.limits.maxUsers == null) return null;
-  const count = await prisma.user.count({ where: { accountId, isActive: true } });
+  const count = await platformPrisma.user.count({ where: { accountId, isActive: true } });
   if (count < e.limits.maxUsers) return null;
   return `The ${e.planName} plan includes ${e.limits.maxUsers} users, and this account has ${count}.`;
 }

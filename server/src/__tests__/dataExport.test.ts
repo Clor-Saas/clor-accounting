@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * A company's own books, in a file its owner can keep.
@@ -186,11 +187,11 @@ describe('the two scopes', () => {
      * `passwordEnc` is absent from a company with no email settings passes
      * whatever the code does — which it did, until this fixture was added.
      */
-    const org = await prisma.org.findUniqueOrThrow({
+    const org = await platformPrisma.org.findUniqueOrThrow({
       where: { id: mine.orgId },
       select: { accountId: true, createdByUserId: true },
     });
-    await prisma.emailSetting.upsert({
+    await platformPrisma.emailSetting.upsert({
       where: { orgId: mine.orgId },
       update: { passwordEnc: 'ENCRYPTED-SMTP-SECRET', username: 'smtp-user', host: 'smtp.example.com' },
       create: {

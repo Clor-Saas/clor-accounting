@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { validateGstinOrThrow } from '../utils/gstin.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
@@ -52,7 +53,7 @@ warehousesRouter.post('/orgs/:orgId/warehouses', requirePermission('MASTERS', Pe
 
   const body = warehouseSchema.parse(req.body);
 
-  const branch = await prisma.branch.findFirst({ where: { accountId, orgId, id: body.branchId } });
+  const branch = await platformPrisma.branch.findFirst({ where: { accountId, orgId, id: body.branchId } });
   if (!branch) return res.status(400).json({ error: 'Invalid branch' });
 
   if (body.gstRegistrationType !== 'UNREGISTERED' && body.gstin) {
@@ -95,7 +96,7 @@ warehousesRouter.patch('/orgs/:orgId/warehouses/:warehouseId', requirePermission
   if (!existing) return res.status(404).json({ error: 'Warehouse not found' });
 
   const nextBranchId = body.branchId ?? existing.branchId;
-  const branch = await prisma.branch.findFirst({ where: { accountId, orgId, id: nextBranchId } });
+  const branch = await platformPrisma.branch.findFirst({ where: { accountId, orgId, id: nextBranchId } });
   if (!branch) return res.status(400).json({ error: 'Invalid branch' });
 
   const nextState = body.state ?? existing.state ?? branch.state;

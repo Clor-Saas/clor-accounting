@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -50,9 +51,9 @@ const roleSchema = z.object({
 });
 
 async function upsertPermission(module: string, subModule: string | null, action: PermissionActionType) {
-  const existing = await prisma.permission.findFirst({ where: { module, subModule, action } });
+  const existing = await platformPrisma.permission.findFirst({ where: { module, subModule, action } });
   if (existing) return existing;
-  return prisma.permission.create({ data: { module, subModule, action } });
+  return platformPrisma.permission.create({ data: { module, subModule, action } });
 }
 
 rolesRouter.get('/orgs/:orgId/roles', requirePermission('SETTINGS', PermissionAction.VIEW, 'Roles'), async (req, res) => {
@@ -69,7 +70,7 @@ rolesRouter.get('/orgs/:orgId/roles', requirePermission('SETTINGS', PermissionAc
     /* listing continues with whatever roles exist */
   }
 
-  const roles = await prisma.role.findMany({
+  const roles = await platformPrisma.role.findMany({
     where: { accountId, orgId },
     include: {
       permissions: { include: { permission: true } },
@@ -79,7 +80,7 @@ rolesRouter.get('/orgs/:orgId/roles', requirePermission('SETTINGS', PermissionAc
 
   const roleIds = roles.map((r) => r.id);
   const assignmentCounts = roleIds.length
-    ? await prisma.userRoleAssignment.groupBy({
+    ? await platformPrisma.userRoleAssignment.groupBy({
         by: ['roleId'],
         where: { accountId, orgId, roleId: { in: roleIds } },
         _count: { roleId: true },
@@ -106,7 +107,7 @@ rolesRouter.post('/orgs/:orgId/roles', requirePermission('SETTINGS', PermissionA
 
   const body = roleSchema.parse(req.body);
 
-  const role = await prisma.role.create({
+  const role = await platformPrisma.role.create({
     data: {
       accountId,
       orgId,
@@ -120,7 +121,7 @@ rolesRouter.post('/orgs/:orgId/roles', requirePermission('SETTINGS', PermissionA
 
   for (const p of body.permissions) {
     const perm = await upsertPermission(p.module.trim(), p.subModule ? p.subModule.trim() : null, p.action as PermissionAction);
-    await prisma.rolePermission.create({
+    await platformPrisma.rolePermission.create({
       data: {
         accountId,
         orgId,
@@ -131,7 +132,7 @@ rolesRouter.post('/orgs/:orgId/roles', requirePermission('SETTINGS', PermissionA
     });
   }
 
-  const full = await prisma.role.findUnique({ where: { id: role.id }, include: { permissions: { include: { permission: true } } } });
+  const full = await platformPrisma.role.findUnique({ where: { id: role.id }, include: { permissions: { include: { permission: true } } } });
   res.status(201).json({ role: full });
 });
 
@@ -143,10 +144,10 @@ rolesRouter.patch('/orgs/:orgId/roles/:roleId', requirePermission('SETTINGS', Pe
 
   const body = roleSchema.partial().parse(req.body);
 
-  const role = await prisma.role.findFirst({ where: { id: roleId, accountId, orgId } });
+  const role = await platformPrisma.role.findFirst({ where: { id: roleId, accountId, orgId } });
   if (!role) return res.status(404).json({ error: 'Role not found' });
 
-  await prisma.role.update({
+  await platformPrisma.role.update({
     where: { id: roleId },
     data: {
       ...('name' in body ? { name: body.name } : {}),
@@ -158,11 +159,11 @@ rolesRouter.patch('/orgs/:orgId/roles/:roleId', requirePermission('SETTINGS', Pe
 
   if ('permissions' in body && body.permissions) {
     // Replace permissions set for clarity (transaction safe in production)
-    await prisma.rolePermission.deleteMany({ where: { roleId } });
+    await platformPrisma.rolePermission.deleteMany({ where: { roleId } });
 
     for (const p of body.permissions) {
       const perm = await upsertPermission(p.module.trim(), p.subModule ? p.subModule.trim() : null, p.action as PermissionAction);
-      await prisma.rolePermission.create({
+      await platformPrisma.rolePermission.create({
         data: {
           accountId,
           orgId,
@@ -174,6 +175,6 @@ rolesRouter.patch('/orgs/:orgId/roles/:roleId', requirePermission('SETTINGS', Pe
     }
   }
 
-  const full = await prisma.role.findUnique({ where: { id: roleId }, include: { permissions: { include: { permission: true } } } });
+  const full = await platformPrisma.role.findUnique({ where: { id: roleId }, include: { permissions: { include: { permission: true } } } });
   res.json({ role: full });
 });

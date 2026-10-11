@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import type { Prisma } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
@@ -40,9 +41,9 @@ inventoryAdjustmentsRouter.post('/orgs/:orgId/adjustments', requirePermission('I
   const body = adjustmentSchema.parse(req.body);
 
   // Access check to branch/warehouse
-  const hasBranch = await prisma.userBranchMembership.findFirst({ where: { accountId, orgId, branchId: body.branchId, userId } });
+  const hasBranch = await platformPrisma.userBranchMembership.findFirst({ where: { accountId, orgId, branchId: body.branchId, userId } });
   if (!hasBranch) return res.status(403).json({ error: 'No access to branch' });
-  const hasWarehouse = await prisma.userWarehouseAccess.findFirst({ where: { accountId, orgId, branchId: body.branchId, warehouseId: body.warehouseId, userId } });
+  const hasWarehouse = await platformPrisma.userWarehouseAccess.findFirst({ where: { accountId, orgId, branchId: body.branchId, warehouseId: body.warehouseId, userId } });
   if (!hasWarehouse) return res.status(403).json({ error: 'No access to warehouse' });
 
   const item = await prisma.item.findFirst({ where: { accountId, orgId, id: body.itemId } });

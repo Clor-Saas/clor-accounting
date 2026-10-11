@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../app.js';
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 
 /**
  * Where a branch's counter takings post.
@@ -42,7 +43,7 @@ async function makeOwner(prefix: string): Promise<Ctx> {
     .set('Authorization', `Bearer ${signup.body.token}`)
     .send({ companyName: `POS Co ${Date.now()}-${rnd()}`, state: 'Karnataka' })
     .expect(200);
-  const org = await prisma.org.findUnique({ where: { id: setup.body.company.orgId }, select: { accountId: true } });
+  const org = await platformPrisma.org.findUnique({ where: { id: setup.body.company.orgId }, select: { accountId: true } });
   return {
     token: signup.body.token,
     orgId: setup.body.company.orgId,

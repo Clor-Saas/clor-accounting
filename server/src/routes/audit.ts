@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../utils/prisma.js';
+import { platformPrisma } from '../utils/platformPrisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireTenantContext } from '../middleware/tenantContext.js';
 import { requirePermission } from '../middleware/rbac.js';
@@ -73,7 +74,7 @@ auditRouter.get('/orgs/:orgId/audit', AUDIT_VIEW, async (req, res) => {
    * One row more than asked for, to know whether there is another page without
    * a second count query over a table that only grows.
    */
-  const rows = await prisma.auditLog.findMany({
+  const rows = await platformPrisma.auditLog.findMany({
     where,
     orderBy: { createdAt: 'desc' },
     take: limit + 1,
@@ -122,8 +123,8 @@ auditRouter.get('/orgs/:orgId/audit/facets', AUDIT_VIEW, async (req, res) => {
    * rather than by fetching rows and reducing them here.
    */
   const [entities, actions] = await Promise.all([
-    prisma.auditLog.groupBy({ by: ['entity'], where: { accountId, orgId } }),
-    prisma.auditLog.groupBy({ by: ['action'], where: { accountId, orgId } }),
+    platformPrisma.auditLog.groupBy({ by: ['entity'], where: { accountId, orgId } }),
+    platformPrisma.auditLog.groupBy({ by: ['action'], where: { accountId, orgId } }),
   ]);
   res.json({
     entities: entities.map((e) => e.entity).sort(),
