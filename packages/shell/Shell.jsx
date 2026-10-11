@@ -3,6 +3,7 @@ import { ChevronDown, LayoutGrid, LogOut, Moon, Plus, Sun } from 'lucide-react';
 
 import { useTheme } from '@ui/components/ui/useTheme';
 import { useDismissable } from '@ui/components/ui/useDismissable';
+import { formatDateIn } from '@ui/utils/dates';
 
 import { APPS, appById, availableApps, landingApp, subscribedApps } from './registry';
 import { useSession } from './session';
@@ -239,6 +240,8 @@ export default function Shell() {
         </button>
       </header>
 
+      <SubscriptionBanner billing={tenant.billing} />
+
       {Root ? (
         /* The app owns the area under the platform bar. Reached from here by
            the switcher and by More apps, both of which are in the bar above —
@@ -322,6 +325,8 @@ export default function Shell() {
  */
 function MoreApps({ tenant, onAdd, onOpen }) {
   const has = (id) => (tenant.subscriptions || []).includes(id);
+  /* Unrestricted (no subscription assigned) owns everything sellable. */
+  const owned = (id) => !tenant.billing?.restricted || (tenant.billing.ownedApps || []).includes(id);
 
   return (
     <div className="space-y-6" style={{ maxWidth: '56rem' }}>
@@ -331,6 +336,8 @@ function MoreApps({ tenant, onAdd, onOpen }) {
           Everything Clor runs. {tenant.name} has {(tenant.subscriptions || []).length} of them.
         </p>
       </div>
+
+      <PlanCard billing={tenant.billing} />
 
       <div className="grid gap-3 sm:grid-cols-2">
         {APPS.map((a) => (
@@ -355,6 +362,8 @@ function MoreApps({ tenant, onAdd, onOpen }) {
                 <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => onOpen(a.id)}>
                   Open {a.name}
                 </button>
+              ) : !owned(a.id) ? (
+                <span className="ui-caption">Not on your plan. Contact Clor to add it.</span>
               ) : (
                 <AddAppButton app={a} tenant={tenant} onAdd={onAdd} />
               )}
@@ -407,6 +416,58 @@ function AddAppButton({ app, tenant, onAdd }) {
         <p className="mt-2 text-sm" style={{ color: 'rgb(var(--neg))' }}>{error}</p>
       ) : null}
     </>
+  );
+}
+
+const STATUS_LABEL = {
+  trialing: 'Trial',
+  active: 'Active',
+  past_due: 'Payment overdue',
+  paused: 'Paused',
+  cancelled: 'Cancelled',
+};
+
+/**
+ * Where the company stands with Clor. Says nothing when no subscription has
+ * been assigned: an account that was never restricted has no plan to describe,
+ * and inventing one would be a claim the server did not make.
+ */
+function PlanCard({ billing }) {
+  if (!billing?.restricted) return null;
+  const end = billing.status === 'trialing' ? billing.trialEndsAt : billing.currentPeriodEnd;
+  return (
+    <section className="ui-card p-4 flex flex-wrap items-center gap-3" aria-label="Your plan">
+      <span className={`ui-pill ${billing.inGoodStanding ? 'ui-pill-pos' : 'ui-pill-warn'}`}>
+        {STATUS_LABEL[billing.status] || billing.status}
+      </span>
+      <span className="text-sm">
+        {(billing.ownedApps || []).length} app{(billing.ownedApps || []).length === 1 ? '' : 's'} on this plan
+        {end ? (
+          <>
+            {' · '}
+            {billing.status === 'trialing' ? 'trial ends' : 'renews'} {formatDateIn(end)}
+          </>
+        ) : null}
+      </span>
+    </section>
+  );
+}
+
+/**
+ * A lapsed subscription warns; it does not lock anybody out of their data.
+ * Shown under the platform bar on every screen until it is resolved.
+ */
+function SubscriptionBanner({ billing }) {
+  if (!billing?.restricted || billing.inGoodStanding) return null;
+  return (
+    <div
+      role="status"
+      className="px-6 py-2 text-sm"
+      style={{ backgroundColor: 'rgb(var(--warn-soft))', color: 'rgb(var(--warn-ink))', borderBottom: '1px solid rgb(var(--border))' }}
+    >
+      Your Clor subscription is {(STATUS_LABEL[billing.status] || billing.status).toLowerCase()}. Your data is safe
+      and still visible; renew to keep working. Contact suresh@clor.in.
+    </div>
   );
 }
 

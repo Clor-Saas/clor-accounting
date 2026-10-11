@@ -4,6 +4,7 @@ import { setPlatformContext } from '@platform/context';
 import {
   APP_FEATURE,
   appsFromFeatures,
+  billingFor,
   featuresFor,
   login as apiLogin,
   logout as apiLogout,
@@ -11,6 +12,7 @@ import {
   setFeature,
   setupCompany,
   signup as apiSignup,
+  visibleApps,
 } from '@platform/auth';
 
 /**
@@ -62,6 +64,9 @@ const toTenant = (membership) => ({
   /* Filled in per company, on demand: one features call each, and only for the
      company actually being looked at. */
   subscriptions: null,
+  /* The subscription as the server reports it; null until asked, or when the
+     answer could not be had (which restricts nothing). */
+  billing: null,
 });
 
 export function SessionProvider({ children }) {
@@ -96,9 +101,14 @@ export function SessionProvider({ children }) {
   const loadApps = useCallback(async (orgId, branchId) => {
     if (!orgId) return;
     try {
-      const { features } = await featuresFor(orgId, branchId);
-      const apps = appsFromFeatures(features);
-      setTenants((list) => list.map((t) => (t.id === orgId ? { ...t, subscriptions: apps } : t)));
+      /* Billing is asked alongside, and allowed to fail: an older server, or a
+         hiccup, must not cost a company the apps it already uses. */
+      const [{ features }, billing] = await Promise.all([
+        featuresFor(orgId, branchId),
+        billingFor(orgId, branchId).catch(() => null),
+      ]);
+      const apps = visibleApps(appsFromFeatures(features), billing);
+      setTenants((list) => list.map((t) => (t.id === orgId ? { ...t, subscriptions: apps, billing } : t)));
     } catch {
       /* A company whose features cannot be read still has its books. */
       setTenants((list) =>

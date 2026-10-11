@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { platformPrisma } from '../utils/platformPrisma.js';
-import { setSubscription, subscribedAppCodes, isAppEntitled, inGoodStanding } from '../services/subscriptions.js';
+import { setSubscription, subscribedAppCodes, isAppEntitled, inGoodStanding, appAccess, appOwnershipReason } from '../services/subscriptions.js';
 
 /**
  * The generic business-model layer: subscriptions grant app-level access and
@@ -36,4 +36,31 @@ describe('business model — subscriptions (gateway-agnostic)', () => {
     expect(apps).toContain('payroll');
     expect(apps).not.toContain('attendance');
   });
+
+  it('no subscription row = unrestricted: every sellable app, nothing taken away', async () => {
+    const fresh = 'test_acct_bizmodel_norow';
+    const a = await appAccess(fresh);
+    expect(a.restricted).toBe(false);
+    expect(a.entitledApps).toEqual(expect.arrayContaining(['accounting', 'payroll']));
+    expect(a.entitledApps).not.toContain('attendance');
+    expect(await appOwnershipReason(fresh, 'payroll')).toBeNull();
+  });
+
+  it('switching on an app the subscription does not own is refused', async () => {
+    await setSubscription(acct, { apps: [], status: 'active' });
+    expect((await appAccess(acct)).restricted).toBe(true);
+    expect(await appOwnershipReason(acct, 'payroll')).toMatch(/not on this account/);
+    // A flag that is not an app switch is never this layer's business.
+    expect(await appOwnershipReason(acct, 'inventory')).toBeNull();
+  });
+
+  it('a lapsed subscription keeps apps visible (owned) but not usable (entitled)', async () => {
+    await setSubscription(acct, { apps: [{ appCode: 'payroll' }], status: 'past_due' });
+    const a = await appAccess(acct);
+    expect(a.ownedApps).toContain('payroll');
+    expect(a.entitledApps).toEqual([]);
+    expect(a.inGoodStanding).toBe(false);
+    expect(await appOwnershipReason(acct, 'payroll')).toMatch(/past_due/);
+  });
 });
+

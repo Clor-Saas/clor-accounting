@@ -15,11 +15,16 @@ export type AppDef = {
   available: boolean;
   /** Default tier when none is chosen (e.g. an accounting PLAN_CATALOG key). */
   defaultTier?: string;
+  /**
+   * The org feature flag that switches this app on for a company, if any.
+   * Accounting has none: every company keeps books.
+   */
+  featureKey?: string;
 };
 
 export const APP_CATALOG: AppDef[] = [
   { code: 'accounting', name: 'Accounting', blurb: 'Invoicing, bills, inventory and the books.', available: true, defaultTier: 'FULL' },
-  { code: 'payroll', name: 'Payroll', blurb: 'Pay runs, statutory, payslips.', available: true },
+  { code: 'payroll', name: 'Payroll', blurb: 'Pay runs, statutory, payslips.', available: true, featureKey: 'payroll' },
   // Attendance is sold on-premise today (ClorTime), not as a cloud subscription.
   { code: 'attendance', name: 'Attendance', blurb: 'Biometric attendance on your own server.', available: false },
   { code: 'people', name: 'People', blurb: 'The staff directory every app refers to.', available: false },
@@ -29,3 +34,6 @@ export const APP_CATALOG: AppDef[] = [
 export const APP_CODES = APP_CATALOG.map((a) => a.code);
 export const appByCode = (code: string) => APP_CATALOG.find((a) => a.code === code) || null;
 export const isSellableApp = (code: string) => Boolean(appByCode(code)?.available);
+export const SELLABLE_APP_CODES = APP_CATALOG.filter((a) => a.available).map((a) => a.code);
+/** The app a feature flag switches on, if that flag is an app switch. */
+export const appForFeature = (featureKey: string) => APP_CATALOG.find((a) => a.featureKey === featureKey) || null;

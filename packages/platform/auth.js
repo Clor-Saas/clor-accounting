@@ -34,11 +34,12 @@ export const logout = () => apiFetch('/auth/logout', { method: 'POST', skipAuth:
 /**
  * Which apps a company has.
  *
- * There is no subscriptions table yet, and inventing one here would be a
- * second source of truth for something the server already decides. A company
- * has Accounting because it has a ledger; it has Payroll when the payroll
- * feature is switched on for it. Adding an app switches the feature on, which
- * is exactly what the More apps screen means by "add".
+ * Two layers, like plans and feature settings. The feature flag is the
+ * company's preference: it has Accounting because it keeps books, and Payroll
+ * when the payroll feature is switched on. The subscription is the ceiling
+ * above it: which apps the account has bought (see billingFor/visibleApps).
+ * Adding an app switches the feature on — and the server refuses that with a
+ * 402 when the subscription does not own the app.
  */
 /*
  * The branch is passed in, not read from the context.
@@ -67,6 +68,23 @@ export const setFeature = (orgId, branchId, key, enabled) =>
     headers: tenantHeaders(orgId, branchId),
     skipWarehouseHeader: true,
   });
+
+/**
+ * The account's subscription, at the level of whole apps.
+ *
+ * `restricted: false` means no subscription has been assigned and nothing is
+ * limited — every account that existed before billing. The shell treats a
+ * failed call the same way, so a billing hiccup never costs a company its apps.
+ */
+export const billingFor = (orgId, branchId) =>
+  apiFetch('/billing/subscription', {
+    headers: tenantHeaders(orgId, branchId),
+    skipWarehouseHeader: true,
+  });
+
+/** What a company sees: the apps it switched on, within the apps it owns. */
+export const visibleApps = (flagApps, billing) =>
+  billing?.restricted ? flagApps.filter((a) => (billing.ownedApps || []).includes(a)) : flagApps;
 
 export const APP_FEATURE = { payroll: 'payroll' };
 

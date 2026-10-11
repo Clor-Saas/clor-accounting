@@ -1,5 +1,5 @@
 import { platformPrisma } from '../utils/platformPrisma.js';
-import { APP_CODES, isSellableApp } from '../constants/appCatalog.js';
+import { APP_CODES, SELLABLE_APP_CODES, appByCode, appForFeature, isSellableApp } from '../constants/appCatalog.js';
 import { getGateway, type NormalizedEvent } from '../billing/gateway.js';
 
 /**
@@ -30,11 +30,73 @@ export async function getSubscription(accountId: string) {
   return platformPrisma.subscription.findUnique({ where: { accountId }, include: { items: true } });
 }
 
-/** App codes the account may currently open. Empty when no subscription exists. */
-export async function subscribedAppCodes(accountId: string): Promise<string[]> {
+export type AppAccess = {
+  /** False when the account has no subscription row: nothing is restricted. */
+  restricted: boolean;
+  inGoodStanding: boolean;
+  status: string | null;
+  /** Apps the account owns, whatever its standing. Drives what the shell shows. */
+  ownedApps: string[];
+  /** Apps it may use right now (owned AND in good standing). Drives enforcement. */
+  entitledApps: string[];
+  trialEndsAt: Date | null;
+  currentPeriodEnd: Date | null;
+};
+
+/**
+ * What the account may have, at the level of whole apps.
+ *
+ * No subscription row means NO restriction — every sellable app — for the same
+ * reason the entitlement layer defaults to FULL: every account that exists
+ * today has no row, and introducing subscriptions must not take anything away
+ * from anyone the day it ships. A restriction is something you assign (a
+ * signup, a sale), never something a deploy does to you.
+ *
+ * Lapsing does not hide owned apps: the shell keeps showing them (the data is
+ * the customer's) and warns; enforcement uses entitledApps.
+ */
+export async function appAccess(accountId: string): Promise<AppAccess> {
   const sub = await getSubscription(accountId);
-  if (!sub || !inGoodStanding(sub)) return [];
-  return sub.items.map((i) => i.appCode);
+  if (!sub) {
+    return {
+      restricted: false,
+      inGoodStanding: true,
+      status: null,
+      ownedApps: [...SELLABLE_APP_CODES],
+      entitledApps: [...SELLABLE_APP_CODES],
+      trialEndsAt: null,
+      currentPeriodEnd: null,
+    };
+  }
+  const good = inGoodStanding(sub);
+  const owned = sub.items.map((i) => i.appCode);
+  return {
+    restricted: true,
+    inGoodStanding: good,
+    status: sub.status,
+    ownedApps: owned,
+    entitledApps: good ? owned : [],
+    trialEndsAt: sub.trialEndsAt,
+    currentPeriodEnd: sub.currentPeriodEnd,
+  };
+}
+
+/** App codes the account may use right now. */
+export async function subscribedAppCodes(accountId: string): Promise<string[]> {
+  return (await appAccess(accountId)).entitledApps;
+}
+
+/**
+ * Whether switching a feature flag ON would open an app the account has not
+ * bought. null = allowed (not an app switch, or the app is owned and usable).
+ */
+export async function appOwnershipReason(accountId: string, featureKey: string): Promise<string | null> {
+  const app = appForFeature(featureKey);
+  if (!app) return null;
+  const access = await appAccess(accountId);
+  if (access.entitledApps.includes(app.code)) return null;
+  if (access.ownedApps.includes(app.code)) return `The subscription is ${access.status}; ${app.name} is paused until it is renewed.`;
+  return `${app.name} is not on this account's subscription.`;
 }
 
 export async function isAppEntitled(accountId: string, appCode: string): Promise<boolean> {
@@ -159,4 +221,4 @@ export async function applyGatewayEvent(ev: NormalizedEvent): Promise<{ applied:
   return { applied: true };
 }
 
-export { APP_CODES };
+export { APP_CODES, appByCode };

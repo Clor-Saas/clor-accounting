@@ -1,3 +1,4 @@
+import 'dotenv/config';
 /**
  * The UI-QA organisation: one command that makes every screen renderable.
  *

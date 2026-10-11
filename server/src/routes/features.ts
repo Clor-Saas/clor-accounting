@@ -9,6 +9,7 @@ import { PermissionAction } from '../constants/enums.js';
 import { isKnownFeature } from '../constants/featureCatalog.js';
 import { getFeatureCatalogWithValues, getFeatures } from '../services/features.js';
 import { entitlementFor, upgradeHintFor } from '../services/entitlements.js';
+import { appOwnershipReason } from '../services/subscriptions.js';
 import { MODULE_PACKS } from '../constants/planCatalog.js';
 
 export const featuresRouter = Router();
@@ -112,6 +113,17 @@ featuresRouter.put(
           upgradeHint: upgradeHintFor(key),
         });
       }
+    }
+
+    /*
+     * Some flags are whole apps (payroll). Switching one on is buying the app,
+     * so the subscription — the commercial ceiling above the plan — has to own
+     * it. 402, not 403: the client shows an upgrade path, not "forbidden".
+     */
+    for (const [key, enabled] of Object.entries(body.features)) {
+      if (!enabled) continue;
+      const reason = await appOwnershipReason(accountId, key);
+      if (reason) return res.status(402).json({ error: reason, code: 'APP_NOT_SUBSCRIBED', feature: key });
     }
 
     for (const [key, enabled] of Object.entries(body.features)) {

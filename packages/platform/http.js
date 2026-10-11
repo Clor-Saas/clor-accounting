@@ -188,6 +188,8 @@ export async function apiFetch(
     const err = new Error(data?.error || describeHttpFailure(res.status, text));
     err.status = res.status;
     err.data = data;
+    /* 402 APP_NOT_SUBSCRIBED and friends: callers branch on the code, not the text. */
+    err.code = data?.code || null;
     throw err;
   }
 

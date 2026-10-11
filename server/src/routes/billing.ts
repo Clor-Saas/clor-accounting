@@ -6,7 +6,7 @@ import { requirePermission } from '../middleware/rbac.js';
 import { PermissionAction } from '../constants/enums.js';
 import { APP_CATALOG } from '../constants/appCatalog.js';
 import { PLAN_CATALOG } from '../constants/planCatalog.js';
-import { getSubscription, subscribedAppCodes, setSubscription, applyGatewayEvent } from '../services/subscriptions.js';
+import { getSubscription, appAccess, setSubscription, applyGatewayEvent } from '../services/subscriptions.js';
 import { getGateway } from '../billing/gateway.js';
 
 export const billingRouter = Router();
@@ -37,8 +37,8 @@ billingRouter.get('/billing/catalog', (_req, res) => {
 /** This account's subscription + the apps it may currently open. */
 billingRouter.get('/billing/subscription', async (req, res) => {
   const accountId = req.tenant!.accountId;
-  const [sub, apps] = await Promise.all([getSubscription(accountId), subscribedAppCodes(accountId)]);
-  res.json({ subscription: sub, subscribedApps: apps });
+  const [sub, access] = await Promise.all([getSubscription(accountId), appAccess(accountId)]);
+  res.json({ subscription: sub, ...access, subscribedApps: access.entitledApps });
 });
 
 const setSchema = z.object({

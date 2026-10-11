@@ -1,3 +1,4 @@
+import 'dotenv/config';
 /**
  * A payroll a company can actually look at, and the journal it posts.
  *
