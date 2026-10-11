@@ -1,41 +1,63 @@
 # Platform DB split — production rollout (Render + Neon)
 
-**Do these in order. Do NOT push `feat/clor-platform` until step 4.**
-Render auto-deploys on push; the new code needs `PLATFORM_DATABASE_URL` and a
-populated `clor_platform`, or api.clor.in fails to boot / logins break.
+**Rehearsed end-to-end on a Neon branch of production on 2026-10-12.** Every step
+below ran against a copy of prod first. Do them in order; do NOT push until step 6.
 
-Detailed SQL + table list: `server/prisma/platform/README_MIGRATION.md`.
+Why the order matters (both proven in rehearsal):
+- Accounting tables in clor_main hold foreign keys to the OLD platform tables
+  (e.g. Warehouse -> Branch). If those stay, the new code writes a Branch into
+  clor_platform and then fails to write the Warehouse -> **every new signup 500s**.
+  They must be dropped before deploy (step 4). Dropping them does not affect the
+  old code still running, so it is safe to do before the push.
+- `prisma migrate deploy` applies the platform row-level-security migration itself;
+  no separate psql step.
 
-## 0. Before you start
-- Take a Neon backup/branch of `clor_main` (Neon → Branches → create branch from production). This is your rollback.
-- Pick a quiet window: signups/logins during steps 2–4 could be lost.
+Scripts (no secrets in them): `server/prisma/platform/rollout/`.
+Your shell needs DATABASE_URL (prod clor_main) and PLATFORM_DATABASE_URL (prod
+clor_platform = the clor_main string with the db name swapped). Never paste them into files.
 
-## 1. Lay down platform tables in `clor_platform` (from your machine)
-In a terminal, set the env vars from your Neon strings (never paste them into files):
+## 1. Backup
+Neon -> Branches -> New branch from production, "Branch data and schema", auto-delete 7 days.
+(Done 2026-10-12: `backup-pre-platform-split`.)
+
+## 2. Create platform tables in prod clor_platform
 ```
-export DATABASE_URL='<clor_main string>'
-export PLATFORM_DATABASE_URL='<clor_main string with db name clor_platform>'
-npm --prefix server run platform:deploy
-psql "$PLATFORM_DATABASE_URL" -f server/prisma/platform/migrations/20260924120000_row_level_security/migration.sql
+npx prisma migrate deploy --schema prisma/platform/schema.prisma
 ```
+Expect: init + row_level_security + billing applied; 31 tables, 19 policies.
 
-## 2. Copy the 27 tables' data clor_main -> clor_platform
-Follow README_MIGRATION.md step 2–3 (pg_dump data-only, FK-safe order, restore).
-Verify row counts match for Account, User, Session, Role, UserOrgMembership.
+## 3. Quiet window starts — nobody uses app.clor.in until step 7
+Writes the OLD code makes after the copy are not carried over.
 
-## 3. Set the env on Render
-Render → clor-api → Environment → add `PLATFORM_DATABASE_URL` = the clor_platform string. Save (no deploy yet if possible).
+## 4. Drop the cross-boundary foreign keys in prod clor_main
+```
+psql "$DATABASE_URL" -f server/prisma/platform/rollout/drop_cross_fks.sql
+```
+Expect: `cross-boundary FKs dropped: 10`. The old 27 tables stay as an inert backup.
 
-## 4. Push + deploy
-`git push origin feat/clor-platform` → Render builds, `prisma:deploy` no-ops (already applied), app boots.
+## 5. Copy the 27 tables
+```
+zsh server/prisma/platform/rollout/copy_platform_data.sh <scratch dir>
+```
+Uses COPY (local pg_dump 14 cannot dump Neon's Postgres 18). Expect `mismatches: 0`
+and `FKs re-added: 22`. The script aborts if clor_platform already has rows.
 
-## 5. Verify
-- Log in on app.clor.in with an existing account.
-- GET /api/billing/catalog returns apps.
+## 6. Render env, then push
+Render -> clor-api -> Environment -> add PLATFORM_DATABASE_URL (prod clor_platform).
+Then `git push origin feat/clor-platform`. Render runs prisma:deploy (accounting/payroll/
+people: no pending; platform: already applied) and boots.
+
+## 7. Verify
 - Render logs: no "Environment variable not found".
+- Log in on app.clor.in with the existing account; company and books load.
+- More apps opens; no plan card (no subscription assigned = unrestricted).
+- A brand-new signup completes company setup.
 
-## 6. Later (after a week of clean running)
-Drop the 27 moved tables from clor_main (README_MIGRATION.md final step). Not before.
+## 8. Later (after ~a week of clean running)
+Drop the 27 old tables from clor_main: `psql "$DATABASE_URL" -f server/prisma/platform/MIGRATE_DATA.sql`.
 
 ## Rollback
-Remove `PLATFORM_DATABASE_URL`, redeploy the previous commit (`66ca808`) from Render's dashboard; data in clor_main is untouched by steps 1–4.
+Before step 6: nothing user-facing changed — remove clor_platform's tables and stop.
+After step 6: redeploy the previous commit (66ca808) from Render. The old code reads the
+old tables in clor_main (still there); data written in clor_platform after cutover is lost.
+Full restore point: Neon branch `backup-pre-platform-split` (until 2026-10-19).
