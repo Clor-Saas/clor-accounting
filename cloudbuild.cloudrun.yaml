@@ -9,3 +9,5 @@ images:
   - 'asia-south1-docker.pkg.dev/$PROJECT_ID/clor/api:${_TAG}'
 substitutions:
   _TAG: manual
+options:
+  logging: CLOUD_LOGGING_ONLY
