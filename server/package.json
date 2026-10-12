@@ -11,7 +11,7 @@
     "prisma:generate": "prisma generate && prisma generate --schema prisma/payroll/schema.prisma && prisma generate --schema prisma/people/schema.prisma && prisma generate --schema prisma/platform/schema.prisma",
     "prisma:push": "prisma db push",
     "prisma:migrate": "prisma migrate dev --name init",
-    "prisma:deploy": "prisma migrate deploy && prisma migrate deploy --schema prisma/payroll/schema.prisma && prisma migrate deploy --schema prisma/people/schema.prisma && prisma migrate deploy --schema prisma/platform/schema.prisma",
+    "prisma:deploy": "node scripts/checkDatabaseUrls.mjs && prisma migrate deploy && prisma migrate deploy --schema prisma/payroll/schema.prisma && prisma migrate deploy --schema prisma/people/schema.prisma && prisma migrate deploy --schema prisma/platform/schema.prisma",
     "payroll:generate": "prisma generate --schema prisma/payroll/schema.prisma",
     "payroll:migrate": "prisma migrate dev --schema prisma/payroll/schema.prisma",
     "payroll:deploy": "prisma migrate deploy --schema prisma/payroll/schema.prisma",
