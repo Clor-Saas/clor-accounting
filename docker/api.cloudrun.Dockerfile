@@ -30,4 +30,4 @@ COPY scripts ./scripts
 RUN rm -f prisma/dev.db prisma/*/*.db
 ENV PORT=8080
 EXPOSE 8080
-CMD ["sh", "-c", "npm run prisma:deploy && exec node dist/index.js"]
+CMD ["sh", "scripts/cloudrun-start.sh"]
